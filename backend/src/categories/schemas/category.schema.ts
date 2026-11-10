@@ -23,8 +23,8 @@ export class Category {
     })
     parentId:Types.ObjectId | null;
 
-    createAt?:Date;
-    updateAt?:Date;
+    createdAt?:Date;
+    updatedAt?:Date;
 }
 
 export const CategorySchema = SchemaFactory.createForClass(Category);

@@ -1,5 +1,4 @@
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
 
 import { Category } from './schemas/category.schema';
 
@@ -8,9 +7,10 @@ import { CreateCategoryDTO } from './create-category.dto';
 import { MongoServerError } from 'mongodb';
 
 import { UpdateCategoryDTO } from './update-category.dto';
-import { Types, isValidObjectId } from 'mongoose';
+import { Types, isValidObjectId, Model } from 'mongoose';
 
 import { Product } from '../products/schemas/product.schema';
+import { ProductLine } from '../productlines/schemas/productline.schema';
 
 @Injectable()
 export class CategoriesService {
@@ -19,7 +19,10 @@ export class CategoriesService {
         private readonly categoryModel: Model<Category>,
 
         @InjectModel(Product.name)
-        private readonly productModel: Model<Product>
+        private readonly productModel: Model<Product>,
+
+        @InjectModel(ProductLine.name)
+        private readonly productLineModel: Model<ProductLine>
     ){}
 
     async create(createCategoryDTO:CreateCategoryDTO){
@@ -223,6 +226,16 @@ export class CategoriesService {
                 'Khong the xoa danh muc dang co san pham',
             );
         }
+        
+        const existingProductLine =
+        await this.productLineModel.findOne({ categoryIdId: id }).exec();
+
+        if (existingProductLine) {
+            throw new ConflictException(
+                'Không thể xóa category đang được ProductLine sử dụng',
+            );
+        }
+
 
         //Xoa category
         const deletedCategory = await this.categoryModel.findByIdAndDelete(id).exec();

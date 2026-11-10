@@ -4,7 +4,11 @@ import { UpdateProductDTO } from './update-product.dto';
 
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, isValidObjectId } from 'mongoose';
+
 import {Product} from './schemas/product.schema';
+import { Brand } from '../brands/schemas/brand.schema';
+import { Category } from '../categories/schemas/category.schema';
+import { ProductLine } from '../productlines/schemas/productline.schema';
 
 import {MongoServerError} from 'mongodb';
 import { VariantDTO } from './variant.dto';
@@ -15,8 +19,18 @@ import { Types } from 'mongoose';
 @Injectable()
 export class ProductsService {
     constructor(
-        @InjectModel(Product.name) 
-        private readonly productModel: Model<Product>){}
+        @InjectModel(Product.name)
+        private readonly productModel: Model<Product>,
+
+        @InjectModel(Brand.name)
+        private readonly brandModel: Model<Brand>,
+
+        @InjectModel(Category.name)
+        private readonly categoryModel: Model<Category>,
+
+        @InjectModel(ProductLine.name)
+        private readonly productLineModel: Model<ProductLine>,
+    ){}
 
     async findAll() {
         return await this.productModel.find().exec();
@@ -96,6 +110,12 @@ export class ProductsService {
 
 
     async create(createProductDTO: CreateProductDTO) {
+        const {
+            categoryId,
+            brandId,
+            productLineId,
+        } = createProductDTO;
+
         // Lấy danh sách sku
         const skus = createProductDTO.variants.map(
             (variant) => variant.sku.trim(),
@@ -132,6 +152,64 @@ export class ProductsService {
             );
         }
 
+        // Kiểm tra Category nếu được cung cấp
+        if (categoryId) {
+            const category = await this.categoryModel
+                .findById(categoryId)
+                .exec();
+
+            if (!category) {
+                throw new NotFoundException(
+                'Danh mục không tồn tại',
+                );
+            }
+        }
+
+        // Kiểm tra Brand nếu được cung cấp
+        if (brandId) {
+            const brand = await this.brandModel
+                .findById(brandId)
+                .exec();
+
+            if (!brand) {
+                throw new NotFoundException(
+                'Thương hiệu không tồn tại',
+                );
+            }
+        }
+        
+        // Kiểm tra ProductLine nếu được cung cấp
+        if (productLineId) {
+            const productLine = await this.productLineModel
+                .findById(productLineId)
+                .exec();
+
+            if (!productLine) {
+                throw new NotFoundException(
+                'Dòng sản phẩm không tồn tại',
+                );
+            }
+
+            // Đối chiếu các thông tin đã được cung cấp
+            if (
+                brandId &&
+                String(productLine.brandId) !== brandId
+            ) {
+                throw new BadRequestException(
+                'ProductLine không thuộc Brand đã chọn',
+                );
+            }
+
+            if (
+                categoryId &&
+                String(productLine.categoryId) !== categoryId
+            ) {
+                throw new BadRequestException(
+                'ProductLine không thuộc Category đã chọn',
+                );
+            }
+        }
+
         // tạo và lưu product
         const newProduct = new this.productModel({
             ...createProductDTO,
@@ -159,46 +237,174 @@ export class ProductsService {
         
     }
 
-    async update(id: string, updateProductDTO: UpdateProductDTO) {
-        //Kiểm tra id hợp lệ 
-        if (!isValidObjectId(id)){
+    
+    async update(
+        id: string,
+        dto: UpdateProductDTO,
+        ) {
+        // 1. Kiểm tra ObjectId
+        if (!isValidObjectId(id)) {
             throw new BadRequestException(
-                'ID sản phẩm không hợp lệ'
+            'Product ID không hợp lệ',
             );
         }
 
-        //Nếu cập nhật slug thì kiểm tra trùng
-        if (updateProductDTO.slug !== undefined){
-            const existingSlug = await this.productModel.findOne({slug: updateProductDTO.slug, _id : {$ne:id},
-            }).exec()
-            
-            if (existingSlug){
-                throw new ConflictException(
-                    'Slug sản phẩm đã tồn tại',
-                );
+        // 2. Kiểm tra Product tồn tại
+        const existingProduct = await this.productModel
+            .findById(id)
+            .exec();
+
+        if (!existingProduct) {
+            throw new NotFoundException(
+            'Không tìm thấy sản phẩm',
+            );
+        }
+
+        // 3. Không cho PATCH body rỗng
+        if (Object.keys(dto).length === 0) {
+            throw new BadRequestException(
+            'Không có dữ liệu cập nhật',
+            );
+        }
+
+        // 4. Kiểm tra slug trùng
+        if (dto.slug !== undefined) {
+            const existingSlug = await this.productModel
+            .findOne({
+                slug: dto.slug,
+                _id: { $ne: id },
+            })
+            .exec();
+
+            if (existingSlug) {
+            throw new ConflictException(
+                'Slug sản phẩm đã tồn tại',
+            );
             }
         }
 
-        //Cập nhật Product
-        const product = await this.productModel
-        .findByIdAndUpdate(
-            id,
-            { $set : updateProductDTO},
-            {
-                new: true,
-                runValidators: true,
-            },
-        )
-        .exec();
+        // 5. Xác định dữ liệu sau cập nhật
+        const brandId =
+            dto.brandId !== undefined
+            ? dto.brandId
+            : existingProduct.brandId?.toString() ?? null;
 
-        //Kiểm tra Product tồn tại
-        if (!product){
-            throw new NotFoundException(
-                `Không tìm thấy sản phẩm có ID = ${id}`
+        const categoryId =
+            dto.categoryId !== undefined
+            ? dto.categoryId
+            : existingProduct.categoryId?.toString() ?? null;
+
+        const productLineId =
+            dto.productLineId !== undefined
+            ? dto.productLineId
+            : existingProduct.productLineId?.toString() ?? null;
+
+        // 6. Kiểm tra Brand
+        if (brandId !== null) {
+            if (!isValidObjectId(brandId)) {
+            throw new BadRequestException(
+                'Brand ID không hợp lệ',
             );
+            }
+
+            const brand = await this.brandModel
+            .findById(brandId)
+            .exec();
+
+            if (!brand) {
+            throw new NotFoundException(
+                'Thương hiệu không tồn tại',
+            );
+            }
         }
 
-        return product;
+        // 7. Kiểm tra Category
+        if (categoryId !== null) {
+            if (!isValidObjectId(categoryId)) {
+            throw new BadRequestException(
+                'Category ID không hợp lệ',
+            );
+            }
+
+            const category = await this.categoryModel
+            .findById(categoryId)
+            .exec();
+
+            if (!category) {
+            throw new NotFoundException(
+                'Danh mục không tồn tại',
+            );
+            }
+        }
+
+        // 8. Kiểm tra ProductLine
+        if (productLineId !== null) {
+            if (!isValidObjectId(productLineId)) {
+            throw new BadRequestException(
+                'ProductLine ID không hợp lệ',
+            );
+            }
+
+            const productLine = await this.productLineModel
+            .findById(productLineId)
+            .exec();
+
+            if (!productLine) {
+            throw new NotFoundException(
+                'Dòng sản phẩm không tồn tại',
+            );
+            }
+
+            // Product có ProductLine thì cần Brand,
+            // Category tương ứng với ProductLine đó.
+            if (
+            brandId !== String(productLine.brandId)
+            ) {
+            throw new BadRequestException(
+                'ProductLine không thuộc Brand đã chọn',
+            );
+            }
+
+            if (
+            categoryId !== String(productLine.categoryId)
+            ) {
+            throw new BadRequestException(
+                'ProductLine không thuộc Category đã chọn',
+            );
+            }
+        }
+
+        // 9. Cập nhật Product
+        try {
+            const updatedProduct =
+            await this.productModel.findByIdAndUpdate(
+                id,
+                { $set: dto },
+                {
+                new: true,
+                runValidators: true,
+                },
+            ).exec();
+
+            if (!updatedProduct) {
+            throw new NotFoundException(
+                'Không tìm thấy sản phẩm',
+            );
+            }
+
+            return updatedProduct;
+        } catch (error) {
+            if (
+            error instanceof MongoServerError &&
+            error.code === 11000
+            ) {
+            throw new ConflictException(
+                'Dữ liệu sản phẩm bị trùng trong MongoDB',
+            );
+            }
+
+            throw error;
+        }
     }
 
     async remove(id: string) {
@@ -221,44 +427,87 @@ export class ProductsService {
         };
     }
 
-    async addVariant(productId:string, variantDTO: VariantDTO){
-        //Kiểm tra productId và lấy product
-        await this.findOne(productId);
+    
+    async addVariant(
+        productId: string,
+        variantDTO: VariantDTO,
+        ) {
+        // 1. Kiểm tra Product ID hợp lệ và tồn tại
+        const product = await this.findOne(productId);
 
-        //Chuẩn hóa SKU
+        // 2. Chuẩn hóa SKU
         const sku = variantDTO.sku.trim();
 
-        //kiểm tra sku tồn tại chưa
-        const existingSku = await this.productModel.findOne({'variants.sku':sku,}).exec();
-
-        if (existingSku){
-            throw new ConflictException('SKU đã tồn tại');
+        if (!sku) {
+            throw new BadRequestException(
+            'SKU không được để trống',
+            );
         }
-        try{
-            return await this.productModel.findByIdAndUpdate(
-                productId,
+
+        // 3. Kiểm tra SKU đã tồn tại trong hệ thống
+        const existingSku = await this.productModel
+            .findOne({ 'variants.sku': sku })
+            .exec();
+
+        if (existingSku) {
+            throw new ConflictException(
+            'SKU đã tồn tại',
+            );
+        }
+
+        // 4. Thêm Variant bằng thao tác có điều kiện
+        try {
+            const updatedProduct =
+            await this.productModel.findOneAndUpdate(
                 {
-                    $push: {
-                        variants:{
-                            ...variantDTO,
-                            sku,
-                        },
+                _id: product._id,
+                'variants.sku': { $ne: sku },
+                },
+                {
+                $push: {
+                    variants: {
+                    ...variantDTO,
+                    sku,
                     },
                 },
+                },
                 {
-                    new : true,
-                    runValidators: true,
+                new: true,
+                runValidators: true,
                 },
             ).exec();
-        }catch (error){
-            if ( error instanceof MongoServerError && error.code === 11000){
-                throw new ConflictException(
-                    `SKU đã tồn tại trong MONGO`
+
+            if (!updatedProduct) {
+            // Product có thể đã bị xóa sau bước kiểm tra
+            const stillExists = await this.productModel
+                .exists({ _id: productId });
+
+            if (!stillExists) {
+                throw new NotFoundException(
+                    'Product không còn tồn tại',
                 );
             }
+
+                throw new ConflictException(
+                    'SKU đã tồn tại trong Product',
+                );
+            }
+
+            return updatedProduct;
+        } catch (error) {
+            if (
+                error instanceof MongoServerError &&
+                error.code === 11000
+            ) {
+                throw new ConflictException(
+                    'SKU đã tồn tại trong MongoDB',
+                );
+            }
+
             throw error;
         }
     }
+
 
     //sửa variants
     async updateVariant(productId:string, variantId:string, updateVariantDTO:UpdateVariantDTO){

@@ -10,6 +10,7 @@ import { UpdateBrandDTO } from './update-brand.dto';
 import { isValidObjectId } from 'mongoose';
 
 import { Product } from '../products/schemas/product.schema';
+import { ProductLine } from '../productlines/schemas/productline.schema';
 
 @Injectable()
 export class BrandsService {
@@ -18,6 +19,8 @@ export class BrandsService {
         private readonly brandModel: Model<Brand>,
         @InjectModel(Product.name)
         private readonly productModel: Model<Product>,
+        @InjectModel(ProductLine.name)
+        private readonly productLineModel: Model<ProductLine>,
     ){}
     
     async create(createBrandDTO:CreateBrandDTO){
@@ -104,6 +107,12 @@ export class BrandsService {
                 },
             ).exec();
 
+            if (!updateBrand) {
+                throw new NotFoundException(
+                    'Không tìm thấy thương hiệu',
+                );
+            }
+
             return updateBrand;
         }catch(error){
             if (error instanceof MongoServerError && error.code === 11000){
@@ -140,6 +149,19 @@ export class BrandsService {
                 'Không thể xóa thương hiệu đang có sản phẩm'
             );
         }
+
+
+        const existingProductLine =
+        await this.productLineModel
+            .findOne({ brandId: id })
+            .exec();
+
+        if (existingProductLine) {
+        throw new ConflictException(
+            'Không thể xóa Brand đang được ProductLine sử dụng',
+        );
+        }
+
 
         //xóa brand
         const deleteBrand = await this.brandModel.findByIdAndDelete(id).exec();

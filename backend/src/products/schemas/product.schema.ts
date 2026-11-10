@@ -40,10 +40,10 @@ export const ProductVariantSchema =
 
 export class Product {
     @Prop({required: true, trim: true})
-    name?:string;
+    name:string;
 
     @Prop({required: true, trim: true})
-    slug?: string;
+    slug: string;
 
     @Prop({default: ''})
     description: string;
@@ -66,7 +66,7 @@ export class Product {
     @Prop({type: SchemaTypes.Mixed})
     specifications?: Record<string,unknown>;
 
-    @Prop({type: [ProductVariant], default: []})
+    @Prop({type: [ProductVariantSchema], default: []})
     variants: ProductVariant[];
 
     createdAt?: Date;

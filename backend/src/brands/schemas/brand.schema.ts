@@ -9,13 +9,13 @@ export type BrandDocument = HydratedDocument<Brand>;
 })
 
 export class Brand {
-    @Prop({require:true, trim: true})
+    @Prop({required:true, trim: true})
     name:string;
 
-    @Prop({default:''})
+    @Prop({required:true, trim: true})
     slug:string;
 
-    @Prop({require:true, trim: true})
+    @Prop({required:true, trim: true, default:''})
     logo:string;
 
     @Prop({
@@ -24,10 +24,18 @@ export class Brand {
     })
     status:string;
 
-    createAt?:Date;
-    updateAt?:Date;
+    createdAt?:Date;
+    updatedAt?:Date;
 }
 
 export const BrandSchema = SchemaFactory.createForClass(Brand)
+
+BrandSchema.index(
+  { slug: 1 },
+  {
+    unique: true,
+    name: 'unique_brand_slug',
+  },
+);
 
 

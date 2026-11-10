@@ -6,6 +6,8 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { Brand, BrandSchema } from './schemas/brand.schema';
 import { Product,ProductSchema } from '../products/schemas/product.schema';
 
+import { ProductLine, ProductLineSchema } from '../productlines/schemas/productline.schema';
+
 @Module({
   imports:[
     MongooseModule.forFeature([
@@ -16,6 +18,10 @@ import { Product,ProductSchema } from '../products/schemas/product.schema';
       {
         name: Product.name,
         schema: ProductSchema
+      },
+      {
+        name:ProductLine.name,
+        schema:ProductLineSchema
       },
     ]),
   ],

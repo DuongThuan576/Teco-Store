@@ -5,7 +5,7 @@ export class VariantDTO {
     @IsString()
     sku: string;
     
-    @IsNotEmpty()
+    @IsOptional()
     @IsString()
     color?: string;
     
