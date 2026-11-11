@@ -9,6 +9,7 @@ export class ProductlinesController {
         private readonly productLineService : ProductlinesService
     ){}
 
+    //Tạo Dòng Sản phẩm (admin)
     @Post()
     create(@Body() createProductLineDTO:CreateProductLineDTO){
         return this.productLineService.create(
@@ -16,16 +17,19 @@ export class ProductlinesController {
         )
     }
 
+    //Lấy tất cả Dòng sản phẩm
     @Get()
     findAll(){
         return this.productLineService.findAll();
     }
 
+    //Lấy dòng sản phẩm theo slug
     @Get('slug/:slug')
     findBySlug(@Param('slug') slug:string){
         return this.productLineService.findBySlug(slug);
     }
 
+    //Cập nhật dòng sản phẩm theo id (admin)
     @Patch(':id')
     update(
         @Param('id') id:string,

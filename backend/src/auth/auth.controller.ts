@@ -15,11 +15,13 @@ export class AuthController {
         private readonly authService: AuthService,
     ){}
 
+    //Đăng ký
     @Post('register')
     register(@Body() dto : RegisterDTO){
         return this.authService.register(dto);
     }
 
+    //Đăng Nhập
     @Post('login')
     @HttpCode(HttpStatus.OK)
     async login(
@@ -38,6 +40,7 @@ export class AuthController {
         return result;
     }
 
+    //Lấy thông tin tài khoản
     @Get('me')
     @UseGuards(JwtAuthGuard)
     getProfile(@Req() request: AuthenticatedRequest){
@@ -48,6 +51,7 @@ export class AuthController {
     }
 
 
+    //Refresh token
     @Post('refresh')
     @HttpCode(HttpStatus.OK)
         async refresh(
@@ -76,7 +80,7 @@ export class AuthController {
         return result;
     }
 
-
+    //Đăng Xuất
     @Post('logout')
     @HttpCode(HttpStatus.OK)
         async logout(
@@ -107,6 +111,7 @@ export class AuthController {
         };
     }
 
+    //Xem các sessions đăng nhập (admin)
     @Get('sessions')
     @UseGuards(JwtAuthGuard)
     async getSessions(

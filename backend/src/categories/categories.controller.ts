@@ -11,6 +11,7 @@ export class CategoriesController {
         private readonly categoriesService : CategoriesService,
     ){}
 
+    //Tạo Danh mục mới (admin)
     @Post()
     create(@Body() createCategoryDTO:CreateCategoryDTO){
         return this.categoriesService.create(
@@ -18,6 +19,7 @@ export class CategoriesController {
         );
     }
 
+    //Lấy tất cả danh mục
     @Get()
     findAll(){
         return this.categoriesService.findAll();
@@ -29,6 +31,7 @@ export class CategoriesController {
         return this.categoriesService.findBySlug(slug);
     }
 
+    //Sửa danh mục theo id (admin)
     @Patch(':id')
     update(
         @Param('id') id:string,
@@ -40,6 +43,7 @@ export class CategoriesController {
         );
     }
 
+    //Xóa danh mục theo id(admin)
     @Delete(':id')
     remove(@Param('id') id:string){
         return this.categoriesService.remove(id);

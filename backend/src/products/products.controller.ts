@@ -11,6 +11,7 @@ export class ProductsController {
         private readonly productsService: ProductsService,
     ) { }
 
+    //Lấy tất cả sản phẩm
     @Get()
     findAll() {
         return this.productsService.findAll();
@@ -58,11 +59,13 @@ export class ProductsController {
     );
 }
 
+    //Tạo sản phẩm mới (admin)
     @Post()
     create(@Body() createProductDTO: CreateProductDTO) {
         return this.productsService.create(createProductDTO);
     }
 
+    //Thêm variant mới vào sản phẩm (admin)
     @Post(':productId/variants')
     addVariant(
         @Param('productId') productId: string,

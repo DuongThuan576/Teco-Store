@@ -31,6 +31,7 @@ export class CartsController {
     private readonly cartsService: CartsService,
   ) {}
 
+  //Lấy giỏ hàng của người dùng
   @Get('me')
   @UseGuards(JwtAuthGuard)
   getMyCart(@Req() req: AuthenticatedRequest) {
@@ -45,7 +46,7 @@ export class CartsController {
     return this.cartsService.getMyCart(userId);
   }
 
-
+    //Thêm items vào giỏ hàng
     @Post('items')
     @UseGuards(JwtAuthGuard)
     addItem(
@@ -62,9 +63,7 @@ export class CartsController {
 
         return this.cartsService.addItem(userId, dto);
     }
-
-
-
+    //Cập nhật item trong giỏ hàng 
     @Patch('items/:variantId')
     @UseGuards(JwtAuthGuard)
     updateItem(
@@ -87,7 +86,7 @@ export class CartsController {
         );
     }
 
-
+    //Xóa Item trong giỏ hàng
     @Delete('items/:variantId')
     @UseGuards(JwtAuthGuard)
     removeItem(
@@ -108,6 +107,7 @@ export class CartsController {
         );
     }
 
+    //Xóa tất cả item trong giỏ hàng
     @Delete('me')
     @UseGuards(JwtAuthGuard)
     clearCart(

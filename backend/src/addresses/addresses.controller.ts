@@ -23,7 +23,8 @@ export class AddressesController {
   constructor(
     private readonly addressesService: AddressesService,
   ) {}
-
+  
+  //Xem danh sách địa chỉ
   @Get('me')
   @UseGuards(JwtAuthGuard)
   getMyAddresses(@Req() req: AuthenticatedRequest) {
@@ -38,7 +39,7 @@ export class AddressesController {
     return this.addressesService.getMyAddresses(userId);
   }
 
-
+    // Tạo thêm địa chỉ mới
     @Post()
     @UseGuards(JwtAuthGuard)
     createAddress(
@@ -59,7 +60,7 @@ export class AddressesController {
         );
     }
 
-
+    //Cập nhật địa chỉ theo id
     @Patch(':id')
     @UseGuards(JwtAuthGuard)
     updateAddress(
@@ -82,7 +83,7 @@ export class AddressesController {
         );
     }
 
-
+    //Đặt địa chỉ thành mặc định theo id
     @Patch(':id/default')
     @UseGuards(JwtAuthGuard)
     setDefaultAddress(
@@ -103,7 +104,7 @@ export class AddressesController {
         );
     }
 
-
+    //Xóa địa chỉ
     @Delete(':id')
     @UseGuards(JwtAuthGuard)
     removeAddress(

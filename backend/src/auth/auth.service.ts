@@ -234,7 +234,7 @@ export class AuthService {
                 expiresAt: newExpiresAt,
                 },
             },
-            { new: true },
+            { returnDocument: 'after' },
             );
 
         if (!updatedSession) {

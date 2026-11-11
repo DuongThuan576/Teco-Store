@@ -11,6 +11,7 @@ import { ProductlinesModule } from './productlines/productlines.module';
 import { AuthModule } from './auth/auth.module';
 import { CartsModule } from './carts/carts.module';
 import { AddressesModule } from './addresses/addresses.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -41,6 +42,8 @@ import { AddressesModule } from './addresses/addresses.module';
     CartsModule,
 
     AddressesModule,
+
+    UsersModule,
   ],
 
   controllers: [AppController],
