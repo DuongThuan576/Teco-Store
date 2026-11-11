@@ -228,7 +228,7 @@ export class CategoriesService {
         }
         
         const existingProductLine =
-        await this.productLineModel.findOne({ categoryIdId: id }).exec();
+        await this.productLineModel.findOne({ categoryId: id }).exec();
 
         if (existingProductLine) {
             throw new ConflictException(
