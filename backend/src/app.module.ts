@@ -10,6 +10,7 @@ import { BrandsModule } from './brands/brands.module';
 import { ProductlinesModule } from './productlines/productlines.module';
 import { AuthModule } from './auth/auth.module';
 import { CartsModule } from './carts/carts.module';
+import { AddressesModule } from './addresses/addresses.module';
 
 @Module({
   imports: [
@@ -38,6 +39,8 @@ import { CartsModule } from './carts/carts.module';
     AuthModule,
 
     CartsModule,
+
+    AddressesModule,
   ],
 
   controllers: [AppController],
