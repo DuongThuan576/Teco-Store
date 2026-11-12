@@ -42,10 +42,6 @@ import { AuthSessionSchema, AuthSession } from './schemas/auth-session.schema';
   ],
   providers: [AuthService, JwtAuthGuard],
   controllers: [AuthController],
-
-  exports:[  
-    JwtAuthGuard,
-  JwtModule,
-  MongooseModule,],
+  exports: [AuthService, JwtAuthGuard, JwtModule, MongooseModule],
 })
 export class AuthModule {}

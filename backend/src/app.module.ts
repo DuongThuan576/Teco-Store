@@ -12,6 +12,7 @@ import { AuthModule } from './auth/auth.module';
 import { CartsModule } from './carts/carts.module';
 import { AddressesModule } from './addresses/addresses.module';
 import { UsersModule } from './users/users.module';
+import { OrdersModule } from './orders/orders.module';
 
 @Module({
   imports: [
@@ -44,6 +45,8 @@ import { UsersModule } from './users/users.module';
     AddressesModule,
 
     UsersModule,
+
+    OrdersModule,
   ],
 
   controllers: [AppController],

@@ -165,7 +165,7 @@ export class CategoriesService {
                 id,
                 {$set: updateCategoryDTO},
                 {
-                    new : true,
+                    returnDocument: 'after',
                     runValidators:true,
                 },
             ).exec();

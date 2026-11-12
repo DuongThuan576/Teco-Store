@@ -381,7 +381,7 @@ export class ProductsService {
                 id,
                 { $set: dto },
                 {
-                new: true,
+                returnDocument: 'after',
                 runValidators: true,
                 },
             ).exec();
@@ -472,8 +472,8 @@ export class ProductsService {
                 },
                 },
                 {
-                new: true,
-                runValidators: true,
+                    returnDocument: 'after',
+                    runValidators: true,
                 },
             ).exec();
 
@@ -541,7 +541,7 @@ export class ProductsService {
             },
             {$set: updates},
             {
-                new: true,
+                returnDocument: 'after',
                 runValidators: true,
                 arrayFilters: [
                     {'variant._id': new Types.ObjectId(variantId)},
@@ -590,7 +590,7 @@ export class ProductsService {
                 },
             },
             {
-                new: true,
+                returnDocument: 'after',
                 runValidators: true,
             },
             )

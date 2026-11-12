@@ -102,7 +102,7 @@ export class BrandsService {
                 id,
                 {$set:updateBrandDTO},
                 {
-                    new: true,
+                    returnDocument: 'after',
                     runValidators: true 
                 },
             ).exec();
