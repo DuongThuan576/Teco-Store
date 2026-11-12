@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Brand, Category, Product } from '../types/api';
 import {
   formatVndPrice,
@@ -37,6 +38,7 @@ export const BestSellersSection: React.FC<BestSellersSectionProps> = ({
   onClearFilters,
   onSelectProduct,
 }) => {
+  const navigate = useNavigate();
   const [showInactive, setShowInactive] = useState(false);
 
   const displayCategories = categories.filter((c) => c.productType !== 'test');
@@ -69,6 +71,10 @@ export const BestSellersSection: React.FC<BestSellersSectionProps> = ({
 
     return true;
   });
+
+  // Giới hạn 12 sản phẩm nổi bật trên trang chủ để tránh làm loãng trang
+  const DISPLAY_LIMIT = 12;
+  const displayedProducts = filteredProducts.slice(0, DISPLAY_LIMIT);
 
   const activeBrand = brands.find((b) => b._id === selectedBrandId);
 
@@ -191,9 +197,10 @@ export const BestSellersSection: React.FC<BestSellersSectionProps> = ({
           </button>
         </div>
       ) : (
-        /* Product Grid: 4 across desktop */
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {filteredProducts.map((product, index) => {
+        <>
+          {/* Product Grid: 4 across desktop */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {displayedProducts.map((product, index) => {
             const primaryVariant = getPrimaryVariant(product);
             const totalStock = getTotalStock(product);
             const chips = getProductSpecChips(product);
@@ -284,6 +291,29 @@ export const BestSellersSection: React.FC<BestSellersSectionProps> = ({
             );
           })}
         </div>
+
+        {/* Xem tất cả nếu còn sản phẩm */}
+        {filteredProducts.length > DISPLAY_LIMIT && (
+          <div className="text-center mt-8">
+            <button
+              type="button"
+              onClick={() => {
+                const targetSlug = selectedCategoryId
+                  ? categories.find((c) => c._id === selectedCategoryId)?.slug || 'all'
+                  : 'all';
+                navigate(`/category/${targetSlug}`);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl border-2 border-primary text-primary hover:bg-primary hover:text-white font-extrabold text-xs tracking-wide shadow-xs hover:shadow-lg transition-all cursor-pointer group"
+            >
+              <span>Xem tất cả {filteredProducts.length} sản phẩm</span>
+              <span className="material-symbols-outlined text-[16px] group-hover:translate-x-1 transition-transform">
+                arrow_forward
+              </span>
+            </button>
+          </div>
+        )}
+        </>
       )}
     </section>
   );
