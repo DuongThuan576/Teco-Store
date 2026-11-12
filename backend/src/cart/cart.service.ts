@@ -43,31 +43,41 @@ export class CartService {
   async getCart(userId: string) {
     const cart = await this.getOrCreateCart(userId);
 
-    // Tính toán tổng tiền và kiểm tra cập nhật giá / tồn kho
     let totalAmount = 0;
     let totalItems = 0;
 
     const validatedItems = await Promise.all(
       cart.items.map(async (item) => {
         const product = await this.productModel.findById(item.productId).exec();
-        const variant = product?.variants?.find((v) => v.sku === item.sku);
+        const variant = product?.variants?.find(
+          (v) =>
+            (item.sku && v.sku === item.sku) ||
+            (item.variantId && String((v as any)._id) === String(item.variantId)),
+        );
 
-        const currentPrice = variant?.price ?? item.price;
+        const currentPrice = variant?.price ?? item.price ?? 0;
         const currentStock = variant?.stock ?? 0;
-        // Khả dụng nếu sản phẩm tồn tại và đang active (hoặc còn tồn kho nếu quản lý kho)
         const isAvailable = Boolean(product && product.isActive);
 
         totalAmount += currentPrice * item.quantity;
         totalItems += item.quantity;
 
+        const effectiveSku = variant?.sku || item.sku || '';
+        const effectiveVariantId = variant
+          ? String((variant as any)._id)
+          : item.variantId
+          ? String(item.variantId)
+          : undefined;
+
         return {
           productId: String(item.productId),
-          sku: item.sku,
-          name: product?.name || item.name,
-          slug: product?.slug || item.slug,
-          color: item.color,
-          storage: item.storage,
-          image: item.image,
+          variantId: effectiveVariantId,
+          sku: effectiveSku,
+          name: product?.name || item.name || '',
+          slug: product?.slug || item.slug || '',
+          color: variant?.color || item.color || '',
+          storage: variant?.storage || item.storage || '',
+          image: variant?.images?.[0] || product?.images?.[0] || item.image || '',
           price: currentPrice,
           quantity: item.quantity,
           stock: currentStock,
@@ -98,14 +108,40 @@ export class CartService {
       throw new NotFoundException('Sản phẩm không tồn tại hoặc đã ngừng kinh doanh');
     }
 
-    const variant = product.variants?.find((v) => v.sku === dto.sku);
-    if (!variant) {
-      throw new NotFoundException(`Biến thể SKU ${dto.sku} không tồn tại`);
+    // Tìm variant theo sku hoặc variantId, hoặc lấy biến thể đầu tiên
+    let variant = product.variants?.find((v) => {
+      if (dto.sku && v.sku === dto.sku) return true;
+      if (
+        dto.variantId &&
+        (String((v as any)._id) === dto.variantId || v.sku === dto.variantId)
+      )
+        return true;
+      return false;
+    });
+
+    if (!variant && !dto.sku && !dto.variantId && product.variants?.length > 0) {
+      variant = product.variants[0];
     }
 
+    if (!variant) {
+      throw new NotFoundException(
+        dto.sku
+          ? `Biến thể SKU ${dto.sku} không tồn tại`
+          : 'Không tìm thấy biến thể phù hợp cho sản phẩm',
+      );
+    }
+
+    const sku = variant.sku;
+    const variantId = (variant as any)._id
+      ? new Types.ObjectId((variant as any)._id)
+      : undefined;
     const quantityToAdd = dto.quantity && dto.quantity > 0 ? dto.quantity : 1;
 
-    const existingItemIndex = cart.items.findIndex((item) => item.sku === dto.sku);
+    const existingItemIndex = cart.items.findIndex(
+      (item) =>
+        item.sku === sku ||
+        (variantId && item.variantId?.toString() === variantId.toString()),
+    );
 
     if (existingItemIndex > -1) {
       const currentQty = cart.items[existingItemIndex].quantity;
@@ -118,6 +154,9 @@ export class CartService {
       }
 
       cart.items[existingItemIndex].quantity = newQty;
+      cart.items[existingItemIndex].sku = sku;
+      if (variantId) cart.items[existingItemIndex].variantId = variantId;
+      cart.items[existingItemIndex].price = variant.price;
     } else {
       if (variant.stock > 0 && variant.stock < quantityToAdd) {
         throw new BadRequestException(
@@ -125,12 +164,12 @@ export class CartService {
         );
       }
 
-      const imageUrl =
-        variant.images?.[0] || product.images?.[0] || '';
+      const imageUrl = variant.images?.[0] || product.images?.[0] || '';
 
       cart.items.push({
         productId: new Types.ObjectId(dto.productId),
-        sku: variant.sku,
+        variantId,
+        sku,
         name: product.name,
         slug: product.slug,
         color: variant.color || '',
@@ -145,14 +184,16 @@ export class CartService {
     return this.getCart(userId);
   }
 
-  // Cập nhật số lượng của 1 sản phẩm trong giỏ
-  async updateQuantity(userId: string, sku: string, quantity: number) {
+  // Cập nhật số lượng của 1 sản phẩm trong giỏ (bằng sku hoặc variantId)
+  async updateQuantity(userId: string, idOrSku: string, quantity: number) {
     if (quantity < 1) {
-      return this.removeItem(userId, sku);
+      return this.removeItem(userId, idOrSku);
     }
 
     const cart = await this.getOrCreateCart(userId);
-    const itemIndex = cart.items.findIndex((i) => i.sku === sku);
+    const itemIndex = cart.items.findIndex(
+      (i) => i.sku === idOrSku || i.variantId?.toString() === idOrSku,
+    );
 
     if (itemIndex === -1) {
       throw new NotFoundException('Sản phẩm không có trong giỏ hàng');
@@ -160,28 +201,32 @@ export class CartService {
 
     const item = cart.items[itemIndex];
     const product = await this.productModel.findById(item.productId).exec();
-    const variant = product?.variants?.find((v) => v.sku === sku);
+    const variant = product?.variants?.find(
+      (v) =>
+        (item.sku && v.sku === item.sku) ||
+        (item.variantId && String((v as any)._id) === String(item.variantId)),
+    );
 
-    if (!variant) {
-      throw new NotFoundException('Biến thể sản phẩm không tồn tại');
-    }
-
-    if (variant.stock > 0 && variant.stock < quantity) {
+    if (variant && variant.stock > 0 && variant.stock < quantity) {
       throw new BadRequestException(
         `Số lượng tồn kho không đủ (chỉ còn ${variant.stock} sản phẩm)`,
       );
     }
 
     cart.items[itemIndex].quantity = quantity;
+    if (variant) {
+      cart.items[itemIndex].price = variant.price;
+    }
     await cart.save();
-
     return this.getCart(userId);
   }
 
-  // Xóa 1 sản phẩm khỏi giỏ hàng
-  async removeItem(userId: string, sku: string) {
+  // Xóa 1 sản phẩm khỏi giỏ hàng (bằng sku hoặc variantId)
+  async removeItem(userId: string, idOrSku: string) {
     const cart = await this.getOrCreateCart(userId);
-    cart.items = cart.items.filter((item) => item.sku !== sku);
+    cart.items = cart.items.filter(
+      (i) => i.sku !== idOrSku && i.variantId?.toString() !== idOrSku,
+    );
     await cart.save();
     return this.getCart(userId);
   }
@@ -192,7 +237,7 @@ export class CartService {
     cart.items = [];
     await cart.save();
     return {
-      message: 'Đã xóa toàn bộ giỏ hàng',
+      message: 'Đã làm trống giỏ hàng thành công',
       items: [],
       totalItems: 0,
       totalAmount: 0,

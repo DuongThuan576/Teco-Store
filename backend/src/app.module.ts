@@ -9,7 +9,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { BrandsModule } from './brands/brands.module';
 import { ProductlinesModule } from './productlines/productlines.module';
 import { AuthModule } from './auth/auth.module';
-import { CartsModule } from './carts/carts.module';
+import { CartModule } from './cart/cart.module';
 import { AddressesModule } from './addresses/addresses.module';
 import { UsersModule } from './users/users.module';
 import { OrdersModule } from './orders/orders.module';
@@ -40,7 +40,7 @@ import { OrdersModule } from './orders/orders.module';
 
     AuthModule,
 
-    CartsModule,
+    CartModule,
 
     AddressesModule,
 

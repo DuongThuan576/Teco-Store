@@ -8,29 +8,35 @@ export class CartItem {
   @Prop({ type: SchemaTypes.ObjectId, ref: 'Product', required: true })
   productId: Types.ObjectId;
 
-  @Prop({ required: true, trim: true })
+  @Prop({ type: SchemaTypes.ObjectId, required: false })
+  variantId?: Types.ObjectId;
+
+  @Prop({ required: false, trim: true, default: '' })
   sku: string;
 
-  @Prop({ required: true, trim: true })
-  name: string;
-
-  @Prop({ required: true, trim: true })
-  slug: string;
+  @Prop({ default: '', trim: true })
+  name?: string;
 
   @Prop({ default: '', trim: true })
-  color: string;
+  slug?: string;
 
   @Prop({ default: '', trim: true })
-  storage: string;
+  color?: string;
+
+  @Prop({ default: '', trim: true })
+  storage?: string;
 
   @Prop({ default: '' })
-  image: string;
+  image?: string;
 
-  @Prop({ required: true, min: 0 })
-  price: number;
+  @Prop({ required: false, min: 0, default: 0 })
+  price?: number;
 
   @Prop({ required: true, min: 1, default: 1 })
   quantity: number;
+
+  @Prop({ type: Date, default: Date.now })
+  addedAt?: Date;
 }
 
 export const CartItemSchema = SchemaFactory.createForClass(CartItem);
