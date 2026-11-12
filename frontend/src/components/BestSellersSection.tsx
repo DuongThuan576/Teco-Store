@@ -271,7 +271,7 @@ export const BestSellersSection: React.FC<BestSellersSectionProps> = ({
                         <span className="material-symbols-outlined text-[13px]">
                           check_circle
                         </span>
-                        Sẵn hàng ({totalStock})
+                        Sẵn hàng 
                       </span>
                     ) : (
                       <span className="text-red-500 font-semibold text-[11px]">
