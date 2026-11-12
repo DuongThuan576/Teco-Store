@@ -62,10 +62,12 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
 
   // Brands directly from backend API
   const brandPills = useMemo(() => {
-    const activeBrands = brands.filter((b) => b.status === 'active');
+    const activeBrands = brands.filter(
+      (b) => b.status === 'active' && !b.slug?.includes('default-status'),
+    );
     return [
-      { name: 'Tất cả', slug: null },
-      ...activeBrands.map((b) => ({ name: b.name, slug: b.slug })),
+      { name: 'Tất cả', slug: null, logo: null },
+      ...activeBrands.map((b) => ({ name: b.name, slug: b.slug, logo: b.logo || null })),
     ];
   }, [brands]);
 
@@ -88,6 +90,7 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
       next.delete('brand');
     }
     next.delete('series');
+    next.delete('page');
     setSearchParams(next);
   };
 
@@ -98,21 +101,59 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
     } else {
       next.delete('series');
     }
+    next.delete('page');
     setSearchParams(next);
   };
 
   // Dòng sản phẩm / Series tương ứng với Category và Brand đang chọn
   const availableProductLines = useMemo(() => {
     if (!productLines || productLines.length === 0) return [];
-    return productLines.filter((pl) => {
-      const matchCat = targetCategoryIds.includes(pl.categoryId);
-      if (selectedBrandSlug) {
-        const brandObj = brands.find((b) => b.slug === selectedBrandSlug);
-        if (brandObj && pl.brandId !== brandObj._id) return false;
+    
+    // 1. Chỉ lấy dòng sản phẩm active và không phải nhóm container chung
+    let list = productLines.filter(
+      (pl) => pl.status === 'active' && !pl.slug?.includes('nhom-dong-san-pham'),
+    );
+
+    // 2. Lọc theo danh mục
+    if (targetCategoryIds.length > 0) {
+      list = list.filter((pl) => targetCategoryIds.includes(pl.categoryId));
+    }
+
+    // 3. Lọc theo thương hiệu đang chọn
+    if (selectedBrandSlug) {
+      const brandObj = brands.find((b) => b.slug === selectedBrandSlug);
+      if (brandObj) {
+        list = list.filter((pl) => pl.brandId === brandObj._id);
       }
-      return matchCat;
-    });
+    }
+
+    // 4. Ẩn các dòng con cấp dưới nếu dòng cha chính đã có trong danh sách
+    const idSet = new Set(list.map((pl) => pl._id));
+    return list.filter((pl) => !pl.parentId || !idSet.has(pl.parentId));
   }, [productLines, targetCategoryIds, selectedBrandSlug, brands]);
+
+  // Thông tin ProductLine đang chọn và toàn bộ ID con cháu của nó
+  const selectedProductLine = useMemo(() => {
+    if (!selectedProductLineSlug) return null;
+    return productLines.find((pl) => pl.slug === selectedProductLineSlug) || null;
+  }, [selectedProductLineSlug, productLines]);
+
+  const matchingProductLineIds = useMemo(() => {
+    if (!selectedProductLine) return new Set<string>();
+    const ids = new Set<string>();
+    ids.add(selectedProductLine._id);
+
+    const addChildren = (parentId: string) => {
+      productLines.forEach((pl) => {
+        if (pl.parentId === parentId && !ids.has(pl._id)) {
+          ids.add(pl._id);
+          addChildren(pl._id);
+        }
+      });
+    };
+    addChildren(selectedProductLine._id);
+    return ids;
+  }, [selectedProductLine, productLines]);
 
   // Filter & Sort Products
   const filteredProducts = useMemo(() => {
@@ -139,10 +180,16 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
           }
         }
 
-        // ProductLine (Series) filter
-        if (selectedProductLineSlug) {
-          const plObj = productLines.find((pl) => pl.slug === selectedProductLineSlug);
-          if (plObj && p.productLineId !== plObj._id) {
+        // ProductLine (Series) filter: Khớp theo ID cấp cha/con hoặc theo tên Series
+        if (selectedProductLine) {
+          const matchId = p.productLineId ? matchingProductLineIds.has(p.productLineId) : false;
+          const cleanPlName = selectedProductLine.name
+            .replace(/\s*series$/i, '')
+            .toLowerCase()
+            .trim();
+          const matchName = cleanPlName ? p.name.toLowerCase().includes(cleanPlName) : false;
+
+          if (!matchId && !matchName) {
             return false;
           }
         }
@@ -192,6 +239,8 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
     targetCategoryIds,
     selectedBrandSlug,
     brands,
+    selectedProductLine,
+    matchingProductLineIds,
     searchQuery,
     selectedStorage,
     selectedPriceRange,
@@ -357,13 +406,28 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
                 key={pill.name}
                 type="button"
                 onClick={() => handleBrandSelect(pill.slug)}
-                className={`px-4 py-1.5 rounded-lg border text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg border text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                   isSelected
-                    ? 'border-primary bg-primary text-white shadow-xs'
-                    : 'border-border-subtle text-slate-700 bg-surface-page hover:border-primary hover:text-primary hover:bg-white'
+                    ? 'border-primary ring-2 ring-primary/20 bg-blue-50 text-primary shadow-xs font-bold'
+                    : 'border-border-subtle text-slate-700 bg-white hover:border-primary hover:text-primary hover:bg-slate-50'
                 }`}
+                title={`Lọc theo thương hiệu ${pill.name}`}
               >
-                {pill.name}
+                {pill.logo ? (
+                  <img
+                    src={pill.logo}
+                    alt={pill.name}
+                    className="h-4 w-4 object-contain shrink-0"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  pill.slug === null && (
+                    <span className="material-symbols-outlined text-[16px]">grid_view</span>
+                  )
+                )}
+                <span>{pill.name}</span>
               </button>
             );
           })}
@@ -700,7 +764,17 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
                       {/* Spec Chips */}
                       <div className="flex gap-1.5 mb-2 flex-wrap">
                         {brand && (
-                          <span className="bg-blue-50 text-primary text-[11px] px-2 py-0.5 rounded font-semibold">
+                          <span className="bg-blue-50 text-primary text-[11px] px-2 py-0.5 rounded font-semibold inline-flex items-center gap-1">
+                            {brand.logo && (
+                              <img
+                                src={brand.logo}
+                                alt={brand.name}
+                                className="h-3 w-3 object-contain inline-block shrink-0"
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                }}
+                              />
+                            )}
                             {brand.name}
                           </span>
                         )}
