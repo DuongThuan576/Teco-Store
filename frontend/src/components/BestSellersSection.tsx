@@ -306,7 +306,7 @@ export const BestSellersSection: React.FC<BestSellersSectionProps> = ({
               }}
               className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl border-2 border-primary text-primary hover:bg-primary hover:text-white font-extrabold text-xs tracking-wide shadow-xs hover:shadow-lg transition-all cursor-pointer group"
             >
-              <span>Xem tất cả {filteredProducts.length} sản phẩm</span>
+              <span>Xem tất cả sản phẩm</span>
               <span className="material-symbols-outlined text-[16px] group-hover:translate-x-1 transition-transform">
                 arrow_forward
               </span>

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { Brand, Category, Product, ProductLine } from '../types/api';
 import {
@@ -197,6 +197,72 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
     selectedPriceRange,
     sortOption,
   ]);
+
+  // ================= PAGINATION LOGIC (16 sản phẩm / trang) =================
+  const ITEMS_PER_PAGE = 16;
+  const pageParam = parseInt(searchParams.get('page') || '1', 10);
+  const [currentPage, setCurrentPage] = useState<number>(() =>
+    Number.isNaN(pageParam) || pageParam < 1 ? 1 : pageParam,
+  );
+
+  // Đồng bộ với URL param ?page=
+  useEffect(() => {
+    const p = parseInt(searchParams.get('page') || '1', 10);
+    setCurrentPage(Number.isNaN(p) || p < 1 ? 1 : p);
+  }, [searchParams]);
+
+  // Tự động về trang 1 khi thay đổi bất kỳ bộ lọc, tìm kiếm hay danh mục nào
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    currentCategorySlug,
+    selectedBrandSlug,
+    selectedProductLineSlug,
+    searchQuery,
+    selectedStorage,
+    selectedPriceRange,
+    sortOption,
+  ]);
+
+  const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE);
+  const safePage = Math.min(Math.max(1, currentPage), Math.max(1, totalPages));
+  const startIndex = (safePage - 1) * ITEMS_PER_PAGE;
+
+  const paginatedProducts = useMemo(() => {
+    return filteredProducts.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredProducts, startIndex]);
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage < 1 || newPage > totalPages || newPage === safePage) return;
+    setCurrentPage(newPage);
+    const next = new URLSearchParams(searchParams);
+    if (newPage === 1) {
+      next.delete('page');
+    } else {
+      next.set('page', String(newPage));
+    }
+    setSearchParams(next);
+
+    const productGridEl = document.getElementById('category-product-grid');
+    if (productGridEl) {
+      productGridEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      window.scrollTo({ top: 350, behavior: 'smooth' });
+    }
+  };
+
+  const getPaginationItems = () => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    if (safePage <= 4) {
+      return [1, 2, 3, 4, 5, '...', totalPages];
+    }
+    if (safePage >= totalPages - 3) {
+      return [1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+    }
+    return [1, '...', safePage - 1, safePage, safePage + 1, '...', totalPages];
+  };
 
   return (
     <div className="w-full max-w-[1240px] mx-auto px-4 sm:px-margin-desktop py-space-sm">
@@ -544,7 +610,16 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
         </div>
 
         <span className="text-xs text-text-secondary">
-          Hiển thị <strong>{filteredProducts.length}</strong> sản phẩm
+          {totalPages > 1 ? (
+            <>
+              Tìm thấy <strong className="text-text-primary">{filteredProducts.length}</strong> sản phẩm (Trang{' '}
+              <strong className="text-primary">{safePage}</strong>/{totalPages})
+            </>
+          ) : (
+            <>
+              Hiển thị <strong className="text-text-primary">{filteredProducts.length}</strong> sản phẩm
+            </>
+          )}
         </span>
       </div>
 
@@ -588,88 +663,159 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {filteredProducts.map((product, index) => {
-              const primaryVariant = getPrimaryVariant(product);
-              const totalStock = getTotalStock(product);
-              const chips = getProductSpecChips(product);
-              const imageUrl = getProductImage(product, index);
-              const price = primaryVariant?.price;
-              const brand = brands.find((b) => b._id === product.brandId);
+          <>
+            <div id="category-product-grid" className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {paginatedProducts.map((product, index) => {
+                const primaryVariant = getPrimaryVariant(product);
+                const totalStock = getTotalStock(product);
+                const chips = getProductSpecChips(product);
+                const imageUrl = getProductImage(product, index);
+                const price = primaryVariant?.price;
+                const brand = brands.find((b) => b._id === product.brandId);
 
-              return (
-                <div
-                  key={product._id}
-                  onClick={() => {
-                    navigate(`/product/${product.slug}`);
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="bg-white border border-border-subtle rounded-xl p-3.5 hover:shadow-xl hover:border-primary/50 transition-all flex flex-col justify-between group cursor-pointer"
-                >
-                  <div>
-                    {/* Image */}
-                    <div className="relative aspect-square w-full rounded-lg bg-surface-page overflow-hidden mb-3 p-3 flex items-center justify-center">
-                      {!product.isActive && (
-                        <span className="absolute top-2 right-2 z-10 bg-slate-700 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
-                          Ẩn / Test
-                        </span>
-                      )}
-                      <img
-                        className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
-                        alt={product.name}
-                        src={imageUrl}
-                      />
+                return (
+                  <div
+                    key={product._id}
+                    onClick={() => {
+                      navigate(`/product/${product.slug}`);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="bg-white border border-border-subtle rounded-xl p-3.5 hover:shadow-xl hover:border-primary/50 transition-all flex flex-col justify-between group cursor-pointer"
+                  >
+                    <div>
+                      {/* Image */}
+                      <div className="relative aspect-square w-full rounded-lg bg-surface-page overflow-hidden mb-3 p-3 flex items-center justify-center">
+                        {!product.isActive && (
+                          <span className="absolute top-2 right-2 z-10 bg-slate-700 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
+                            Ẩn / Test
+                          </span>
+                        )}
+                        <img
+                          className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+                          alt={product.name}
+                          src={imageUrl}
+                        />
+                      </div>
+
+                      {/* Spec Chips */}
+                      <div className="flex gap-1.5 mb-2 flex-wrap">
+                        {brand && (
+                          <span className="bg-blue-50 text-primary text-[11px] px-2 py-0.5 rounded font-semibold">
+                            {brand.name}
+                          </span>
+                        )}
+                        {chips.map((chip) => (
+                          <span
+                            key={chip}
+                            className="bg-surface-page text-slate-700 text-[11px] px-2 py-0.5 rounded font-medium"
+                          >
+                            {chip}
+                          </span>
+                        ))}
+                      </div>
+
+                      <h3 className="text-title-card font-title-card text-text-primary line-clamp-2 min-h-[44px] group-hover:text-primary transition-colors">
+                        {product.name}
+                      </h3>
                     </div>
 
-                    {/* Spec Chips */}
-                    <div className="flex gap-1.5 mb-2 flex-wrap">
-                      {brand && (
-                        <span className="bg-blue-50 text-primary text-[11px] px-2 py-0.5 rounded font-semibold">
-                          {brand.name}
+                    <div className="pt-3">
+                      <div className="flex items-baseline gap-2 flex-wrap">
+                        <span className="text-price-lg font-price-lg text-badge-discount">
+                          {formatVndPrice(price)}
                         </span>
-                      )}
-                      {chips.map((chip) => (
-                        <span
-                          key={chip}
-                          className="bg-surface-page text-slate-700 text-[11px] px-2 py-0.5 rounded font-medium"
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs text-text-secondary mt-2 pt-2 border-t border-border-subtle/60">
+                        <span className="text-[11px] text-slate-500 font-medium">
+                          {product.variants?.length || 1} biến thể
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onAddToCart(product);
+                          }}
+                          className="px-3 py-1 bg-primary text-white text-[11px] font-bold rounded hover:bg-surface-tint active:scale-95 transition-all cursor-pointer"
                         >
-                          {chip}
-                        </span>
-                      ))}
-                    </div>
-
-                    <h3 className="text-title-card font-title-card text-text-primary line-clamp-2 min-h-[44px] group-hover:text-primary transition-colors">
-                      {product.name}
-                    </h3>
-                  </div>
-
-                  <div className="pt-3">
-                    <div className="flex items-baseline gap-2 flex-wrap">
-                      <span className="text-price-lg font-price-lg text-badge-discount">
-                        {formatVndPrice(price)}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between text-xs text-text-secondary mt-2 pt-2 border-t border-border-subtle/60">
-                      <span className="text-[11px] text-slate-500 font-medium">
-                        {product.variants?.length || 1} biến thể
-                      </span>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onAddToCart(product);
-                        }}
-                        className="px-3 py-1 bg-primary text-white text-[11px] font-bold rounded hover:bg-surface-tint active:scale-95 transition-all cursor-pointer"
-                      >
-                        Thêm vào giỏ
-                      </button>
+                          Thêm vào giỏ
+                        </button>
+                      </div>
                     </div>
                   </div>
+                );
+              })}
+            </div>
+
+            {/* ================= PAGINATION CONTROLS (Tối đa 16 sản phẩm / trang) ================= */}
+            {totalPages > 1 && (
+              <div className="mt-8 pt-6 border-t border-border-subtle flex flex-col sm:flex-row items-center justify-between gap-4 bg-white/70 backdrop-blur-xs p-4 rounded-2xl border border-border-subtle shadow-xs">
+                <div className="text-xs text-text-secondary">
+                  Hiển thị <span className="font-bold text-text-primary">{startIndex + 1}</span> -{' '}
+                  <span className="font-bold text-text-primary">
+                    {Math.min(startIndex + ITEMS_PER_PAGE, filteredProducts.length)}
+                  </span>{' '}
+                  trên tổng số <span className="font-bold text-primary">{filteredProducts.length}</span> sản phẩm
                 </div>
-              );
-            })}
-          </div>
+
+                <nav className="flex items-center space-x-1.5" aria-label="Phân trang sản phẩm">
+                  {/* Nút Trước */}
+                  <button
+                    type="button"
+                    onClick={() => handlePageChange(safePage - 1)}
+                    disabled={safePage <= 1}
+                    className="px-3 py-2 rounded-xl border border-border-subtle bg-white text-xs font-bold text-text-primary hover:border-primary hover:text-primary disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">chevron_left</span>
+                    <span className="hidden sm:inline">Trước</span>
+                  </button>
+
+                  {/* Các nút số trang */}
+                  {getPaginationItems().map((item, idx) => {
+                    if (item === '...') {
+                      return (
+                        <span
+                          key={`dots-${idx}`}
+                          className="w-9 h-9 flex items-center justify-center text-xs text-text-secondary select-none font-bold"
+                        >
+                          ...
+                        </span>
+                      );
+                    }
+
+                    const pageNum = Number(item);
+                    const isActive = pageNum === safePage;
+
+                    return (
+                      <button
+                        key={`page-${pageNum}`}
+                        type="button"
+                        onClick={() => handlePageChange(pageNum)}
+                        className={`w-9 h-9 rounded-xl text-xs font-bold transition-all flex items-center justify-center cursor-pointer ${
+                          isActive
+                            ? 'bg-primary text-white shadow-sm ring-2 ring-primary/20'
+                            : 'border border-border-subtle bg-white text-text-primary hover:border-primary hover:text-primary hover:bg-blue-50/50'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+
+                  {/* Nút Sau */}
+                  <button
+                    type="button"
+                    onClick={() => handlePageChange(safePage + 1)}
+                    disabled={safePage >= totalPages}
+                    className="px-3 py-2 rounded-xl border border-border-subtle bg-white text-xs font-bold text-text-primary hover:border-primary hover:text-primary disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
+                  >
+                    <span className="hidden sm:inline">Sau</span>
+                    <span className="material-symbols-outlined text-[16px]">chevron_right</span>
+                  </button>
+                </nav>
+              </div>
+            )}
+          </>
         )}
       </div>
 
