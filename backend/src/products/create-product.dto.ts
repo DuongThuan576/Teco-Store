@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsBoolean,  IsObject, IsArray, IsOptional, IsUrl, IsMongoId, ValidateNested } from "class-validator";
+import { IsString, IsNotEmpty, IsBoolean,  IsObject, IsArray, IsOptional, IsUrl, IsMongoId, ValidateNested, ArrayMinSize } from "class-validator";
 import { Type } from "class-transformer";
 import { VariantDTO } from "./variant.dto";
 
@@ -41,6 +41,9 @@ export class CreateProductDTO {
         specifications?: Record<string,unknown>;
 
         @IsArray()
+        @ArrayMinSize(1,{
+                message:'Sản phẩm phải có ít nhất một variant'
+        })
         @ValidateNested({each: true})
         @Type(() => VariantDTO)
         variants: VariantDTO[];

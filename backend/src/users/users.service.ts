@@ -225,17 +225,20 @@ export class UsersService {
                 dto.newPassword,
                 12,
             );
-
-            // 8. Cập nhật mật khẩu
+                // 8. Cập nhật mật khẩu
             const result = await this.userModel.updateOne(
                 {
-                _id: userObjectId,
-                password: user.password,
-                status: 'active',
+                    _id: userObjectId,
+                    password: user.password,
+                    status: 'active',
                 },
                 {
-                $set: {
+                    $set: {
                     password: hashedPassword,
+                },
+
+                    $inc: {
+                    tokenVersion:1
                 },
                 },
                 { session },

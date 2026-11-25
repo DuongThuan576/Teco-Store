@@ -10,6 +10,7 @@ import { UserRole } from "../user-role.enum";
 interface JwtPayLoad {
     sub: string;
     role: UserRole;
+    ver: number;
     iat?:number;
     exp?:number;
 }
@@ -87,6 +88,18 @@ export class JwtAuthGuard implements CanActivate{
             throw new UnauthorizedException(
                 'Tài khoản không tồn tại hoặc đã bị vô hiệu hóa'
             );
+        }
+
+        const currentTokenVersion = user.tokenVersion ?? 0 
+
+        if (
+            typeof payload.ver !== 'number'||
+            !Number.isSafeInteger(payload.ver)||
+            payload.ver !== currentTokenVersion
+        ){
+            throw new UnauthorizedException(
+                'Access Token bị vô hiệu hóa vui lòng đăng nhập lại'
+            )
         }
 
         //Gắn user đã xác thực vào request

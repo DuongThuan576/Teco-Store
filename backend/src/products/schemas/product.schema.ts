@@ -6,7 +6,7 @@ export type ProductDocument = HydratedDocument<Product>;
 
 @Schema({_id: true})
 export class ProductVariant {
-    _id?: Types.ObjectId;
+    _id: Types.ObjectId;
     
     @Prop({required : true, trim: true})
     sku: string;
@@ -66,7 +66,15 @@ export class Product {
     @Prop({type: SchemaTypes.Mixed})
     specifications?: Record<string,unknown>;
 
-    @Prop({type: [ProductVariantSchema], default: []})
+    @Prop({type: [ProductVariantSchema],
+        required:true,
+        validate:{
+            validator: (variants: ProductVariant[]) =>{
+                return Array.isArray(variants) && variants.length > 0;
+            },
+            message: 'sản phẩm phải có ít nhất một variant'
+        }
+    })
     variants: ProductVariant[];
 
     createdAt?: Date;
