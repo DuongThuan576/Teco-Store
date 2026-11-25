@@ -15,6 +15,7 @@ import { UsersModule } from './users/users.module';
 import { OrdersController } from './orders/orders.controller';
 import { OrdersService } from './orders/orders.service';
 import { OrdersModule } from './orders/orders.module';
+import { ReviewsModule } from './reviews/reviews.module';
 
 @Module({
   imports: [
@@ -49,6 +50,8 @@ import { OrdersModule } from './orders/orders.module';
     UsersModule,
 
     OrdersModule,
+
+    ReviewsModule,
   ],
 
   controllers: [AppController],
