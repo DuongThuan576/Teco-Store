@@ -65,7 +65,6 @@ export class OrdersController {
         action: Action.Read,
         subject: Subject.Order,
     })
-    @UseGuards(JwtAuthGuard)
     getAllOrders(
         @Req() req: AuthenticatedRequest,
     ) {
@@ -77,6 +76,22 @@ export class OrdersController {
             );
         }
         return this.ordersService.getAllOrders();
+    }
+
+
+// Admin/Employee xem chi tiết đơn hàng
+    @Get('manage/:id')
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Read,
+        subject: Subject.Order,
+    })
+    getManagedOrderDetail(
+    @Param('id') orderId: string,
+    ) {
+        return this.ordersService.getManagedOrderDetail(
+            orderId,
+        );
     }
 
     //Xem tất cả đơn hàng của mình

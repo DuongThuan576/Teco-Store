@@ -659,7 +659,16 @@ export class OrdersService {
             {
                 _id: orderObjectId,
                 orderStatus: expectedStatus,
-                paymentMethod: 'cod',
+                $or: [
+                    {
+                        paymentMethod: 'cod',
+                        paymentStatus: 'pending',
+                    },
+                    {
+                        paymentMethod: 'vnpay',
+                        paymentStatus: 'paid',
+                    },
+                ],
             },
             {
                 $set: {
@@ -707,6 +716,27 @@ export class OrdersService {
             .exec();
     }
 
+
+    async getManagedOrderDetail(orderId: string) {
+        if (!Types.ObjectId.isValid(orderId)) {
+            throw new BadRequestException(
+            'Order ID không hợp lệ',
+            );
+        }
+
+        const order = await this.orderModel
+            .findById(orderId)
+            .lean()
+            .exec();
+
+        if (!order) {
+            throw new NotFoundException(
+            'Không tìm thấy đơn hàng',
+            );
+        }
+
+        return order;
+    }
 
     private async restoreOrderStock(
         order: Order,

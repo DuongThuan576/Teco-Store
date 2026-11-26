@@ -63,6 +63,19 @@ export class AbilityFactory {
             can(Action.Manage, Subject.Order);
             can(Action.Manage, Subject.Voucher);
             can(Action.Manage, Subject.Review);
+
+            can(Action.Read, Subject.User, {
+            _id: user.id,
+            });
+
+            can(Action.Update, Subject.User, {
+            _id: user.id,
+            });
+
+            can(Action.ChangePassword, Subject.User, {
+            _id: user.id,
+            });
+
         }
 
         // EMPLOYEE
@@ -79,6 +92,20 @@ export class AbilityFactory {
             can(Action.Read, Subject.Review);
             can(Action.Moderate, Subject.Review);
             can(Action.Reply, Subject.Review);
+
+
+            can(Action.Read, Subject.User, {
+                _id: user.id,
+            });
+
+            can(Action.Update, Subject.User, {
+                _id: user.id,
+            });
+
+            can(Action.ChangePassword, Subject.User, {
+                _id: user.id,
+            });
+
         }
 
         // CUSTOMER
@@ -96,9 +123,11 @@ export class AbilityFactory {
             can(Action.Read, Subject.User, {
                 _id: user.id,
             });
-            can(Action.Update, Subject.User    , {
+
+            can(Action.Update, Subject.User, {
                 _id: user.id,
             });
+
             can(Action.ChangePassword, Subject.User, {
                 _id: user.id,
             });
@@ -118,7 +147,7 @@ export class AbilityFactory {
                 userId: user.id,
             });
 
-            //C
+            //Cart
             can(Action.Read, Subject.Cart, {
                 userId: user.id,
             });
