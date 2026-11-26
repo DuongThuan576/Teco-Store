@@ -9,6 +9,9 @@ import { ConfigService } from '@nestjs/config';
 import { User, UserSchema } from './schemas/user.schema';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthSessionSchema, AuthSession } from './schemas/auth-session.schema';
+import { AbilityFactory } from './authorization/ability/ability.factory';
+import { PoliciesGuard } from './authorization/policies/guards/policies.guard';
+import { Ability } from '@casl/ability';
 
 
 @Module({
@@ -35,18 +38,20 @@ import { AuthSessionSchema, AuthSession } from './schemas/auth-session.schema';
 
         return {
           secret: secret,
-          signOptions: { expiresIn: '60m' as const },
+          signOptions: { expiresIn: '15m' as const },
         }
       }
     })
   ],
-  providers: [AuthService, JwtAuthGuard],
+  providers: [AuthService, JwtAuthGuard,PoliciesGuard,AbilityFactory],
   controllers: [AuthController],
 
   exports:[  
     JwtAuthGuard,
     JwtModule,
     MongooseModule,
+    PoliciesGuard,
+    AbilityFactory
   ],
 })
 export class AuthModule {}

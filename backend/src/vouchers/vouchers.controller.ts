@@ -23,6 +23,14 @@ import type {
   AuthenticatedRequest,
 } from '../auth/guards/jwt-auth.guard';
 
+import { PoliciesGuard } from '../auth/authorization/policies/guards/policies.guard';
+
+import { CheckPolicies } from '../auth/authorization/policies/decorators/check-policies.decorator';
+
+import { Action } from '../auth/authorization/enums/action.enum';
+
+import { Subject } from '../auth/authorization/enums/subject.enum';
+
 @Controller('vouchers')
 export class VouchersController {
     constructor(
@@ -31,7 +39,11 @@ export class VouchersController {
 
     //tạo voucher mới(admin)
     @Post()
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Create,
+        subject: Subject.Voucher,
+    })
     createVoucher(
         @Req() req: AuthenticatedRequest,
         @Body() dto: CreateVoucherDto,
@@ -39,16 +51,9 @@ export class VouchersController {
         const user = req.user;
 
         if (!user) {
-        throw new UnauthorizedException(
-            'Vui lòng đăng nhập',
-        );
-        }
-
-        // Tạm kiểm tra Role trước khi triển khai PBAC
-        if (user.role !== 'admin') {
-        throw new ForbiddenException(
-            'Chỉ Admin được tạo voucher',
-        );
+            throw new UnauthorizedException(
+                'Vui lòng đăng nhập',
+            );
         }
 
         return this.vouchersService.createVoucher(dto);
@@ -56,9 +61,13 @@ export class VouchersController {
 
     //Lấy tất cả voucher (admin)
     @Get()
-    @UseGuards(JwtAuthGuard)
-        getAllVouchers(
-    @Req() req: AuthenticatedRequest,
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Read,
+        subject: Subject.Voucher,
+    })
+    getAllVouchers(
+        @Req() req: AuthenticatedRequest,
     ) {
         const user = req.user;
 
@@ -68,19 +77,17 @@ export class VouchersController {
             );
         }
 
-        if (user.role !== 'admin') {
-            throw new ForbiddenException(
-            'Chỉ Admin được xem danh sách voucher',
-            );
-        }
-
         return this.vouchersService.getAllVouchers();
     }
 
 
     //Lấy kho voucher (user)
     @Get('my-wallet')
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.ViewWallet,
+        subject: Subject.Voucher,
+    })
     getMyWallet(
         @Req() req: AuthenticatedRequest,
     ) {
@@ -92,12 +99,6 @@ export class VouchersController {
             );
         }
 
-        if (user.role !== 'customer') {
-            throw new ForbiddenException(
-            'Chỉ Customer được xem kho voucher của mình',
-            );
-        }
-
         return this.vouchersService.getMyWallet(
             user.id,
         );
@@ -105,7 +106,11 @@ export class VouchersController {
 
     //Kieẻm tra voucher (user)
     @Post('validate')
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Validate,
+        subject: Subject.Voucher,
+    })
     validateVoucher(
         @Req() req: AuthenticatedRequest,
         @Body() dto: ValidateVoucherDto,
@@ -118,12 +123,6 @@ export class VouchersController {
             );
         }
 
-        if (user.role !== 'customer') {
-            throw new ForbiddenException(
-                'Chỉ Customer được kiểm tra voucher',
-            );
-        }
-
         return this.vouchersService.validateVoucher(
             user.id,
             dto,
@@ -133,7 +132,11 @@ export class VouchersController {
 
     //lấy chi tiết voucher
     @Get(':id')
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Read,
+        subject: Subject.Voucher,
+    })
     getVoucherDetail(
         @Req() req: AuthenticatedRequest,
         @Param('id') voucherId: string,
@@ -146,12 +149,6 @@ export class VouchersController {
             );
         }
 
-        if (user.role !== 'admin') {
-            throw new ForbiddenException(
-            'Chỉ Admin được xem chi tiết voucher',
-            );
-        }
-
         return this.vouchersService.getVoucherDetail(
             voucherId,
         );
@@ -160,7 +157,11 @@ export class VouchersController {
 
     // Sửa voucher(admin)
     @Patch(':id')
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Update,
+        subject: Subject.Voucher,
+    })
     updateVoucher(
         @Req() req: AuthenticatedRequest,
         @Param('id') voucherId: string,
@@ -171,12 +172,6 @@ export class VouchersController {
         if (!user) {
             throw new UnauthorizedException(
                 'Vui lòng đăng nhập',
-            );
-        }
-
-        if (user.role !== 'admin') {
-            throw new ForbiddenException(
-                'Chỉ Admin được cập nhật Voucher',
             );
         }
 

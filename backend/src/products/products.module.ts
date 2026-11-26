@@ -8,10 +8,12 @@ import { Product, ProductSchema } from './schemas/product.schema';
 import { Brand, BrandSchema,} from '../brands/schemas/brand.schema';
 import { Category, CategorySchema,} from '../categories/schemas/category.schema';
 import { ProductLine, ProductLineSchema,} from '../productlines/schemas/productline.schema';
+import { AuthModule } from '../auth/auth.module';
 
 
 @Module({
   imports: [
+    AuthModule,
     MongooseModule.forFeature([
       { name: Product.name, schema: ProductSchema },
       { name: Brand.name, schema: BrandSchema },

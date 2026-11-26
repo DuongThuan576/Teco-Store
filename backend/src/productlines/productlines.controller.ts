@@ -3,6 +3,16 @@ import { ProductlinesService } from './productlines.service';
 import { CreateProductLineDTO } from './create-productline.dto';
 import { UpdateProductLineDTO } from './update-productline.dto';
 
+import { UseGuards } from '@nestjs/common';
+
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PoliciesGuard } from '../auth/authorization/policies/guards/policies.guard';
+import { CheckPolicies } from '../auth/authorization/policies/decorators/check-policies.decorator';
+
+import { Action } from '../auth/authorization/enums/action.enum';
+import { Subject } from '../auth/authorization/enums/subject.enum';
+
+
 @Controller('productlines')
 export class ProductlinesController {
     constructor(
@@ -10,7 +20,12 @@ export class ProductlinesController {
     ){}
 
     //Tạo Dòng Sản phẩm (admin)
-    @Post()
+    @Post()    
+    @UseGuards(JwtAuthGuard, PoliciesGuard    )
+    @CheckPolicies      ({
+        action: Action.Create,
+        subject: Subject.ProductLine,
+    })
     create(@Body() createProductLineDTO:CreateProductLineDTO){
         return this.productLineService.create(
             createProductLineDTO,
@@ -31,6 +46,11 @@ export class ProductlinesController {
 
     //Cập nhật dòng sản phẩm theo id (admin)
     @Patch(':id')
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Update,
+        subject: Subject.ProductLine,
+    })
     update(
         @Param('id') id:string,
         @Body () updateProductLineDTO:UpdateProductLineDTO
@@ -42,6 +62,11 @@ export class ProductlinesController {
     }
 
     @Delete(':id')
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Delete,
+        subject: Subject.ProductLine,
+    })
     remove(@Param('id') id:string){
         return this.productLineService.remove(id);
     }

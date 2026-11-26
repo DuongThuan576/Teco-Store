@@ -13,6 +13,15 @@ import { AddCartItemDTO } from './add-cart-item.dto';
 import { Product } from '../products/schemas/product.schema';
 import { UpdateCartItemDTO } from './update-cart-item.dto';
 
+import { ForbiddenException } from '@nestjs/common';
+import { subject } from '@casl/ability';
+
+import { AbilityFactory } from '../auth/authorization/ability/ability.factory';
+import { Action } from '../auth/authorization/enums/action.enum';
+import { Subject } from '../auth/authorization/enums/subject.enum';
+
+import type { AuthenticatedUser } from '../auth/guards/jwt-auth.guard';
+
 @Injectable()
 export class CartsService {
   constructor(
@@ -21,15 +30,32 @@ export class CartsService {
 
     @InjectModel(Product.name)
     private readonly productModel: Model<Product>,
+
+    private readonly abilityFactory: AbilityFactory,
   ) {}
 
-  async getMyCart(userId: string) {
+  async getMyCart(user: AuthenticatedUser) {
+    const userId = user.id;
     // 1. Kiểm tra User ID
     if (!isValidObjectId(userId)) {
       throw new BadRequestException(
         'User ID không hợp lệ',
       );
     }
+
+
+    const ability = this.abilityFactory.createForUser(user);
+
+    const cartSubject = subject(Subject.Cart,   {
+        userId,
+    });
+
+    if (!ability.can(Action.Read, cartSubject)) {
+        throw new ForbiddenException(
+            'Bạn không có quyền xem giỏ hàng này',
+        );
+    }
+
 
     // 2. Tìm giỏ hàng theo người dùng
     const cart = await this.cartModel
@@ -62,8 +88,42 @@ export class CartsService {
   }
 
 
-    async addItem(userId: string, dto: AddCartItemDTO) {
+    async addItem(user: AuthenticatedUser, dto: AddCartItemDTO) {
+        const userId = user.id;
+
+
+        if (!isValidObjectId(userId)) {
+            throw new BadRequestException('User ID không hợp lệ');
+        }
+
+        const ability = this.abilityFactory.createForUser(user);
+
+        const cartSubject = subject(Subject.Cart, {
+            userId,
+        });
+
+        if (!ability.can(Action.Update, cartSubject)) {
+            throw new ForbiddenException(
+                'Bạn không có quyền thêm sản phẩm vào giỏ hàng',
+            );
+        }
+
         const { productId, variantId, quantity } = dto;
+
+        if (
+        !isValidObjectId(productId) ||
+        !isValidObjectId(variantId)
+        ) {
+        throw new BadRequestException(
+            'Product ID hoặc Variant ID không hợp lệ',
+        );
+        }
+
+        if (!Number.isInteger(quantity) || quantity < 1) {
+        throw new BadRequestException(
+            'Số lượng phải là số nguyên lớn hơn 0',
+        );
+        }
 
         // 1. Kiểm tra Product tồn tại
         const product = await this.productModel
@@ -94,81 +154,115 @@ export class CartsService {
             );
         }
 
-        // 4. Tìm giỏ hàng của User hiện tại
-        let cart = await this.cartModel.findOne({
-            userId: new Types.ObjectId(userId),
-        });
+        
+        const userObjectId = new Types.ObjectId(userId);
+        const productObjectId = new Types.ObjectId(productId);
+        const variantObjectId = new Types.ObjectId(variantId);
 
-        // 5. Xác định số lượng Variant đã có trong Cart
-        const existingItem = cart?.items.find(
-            (item) =>
-            String(item.productId) === productId &&
-            String(item.variantId) === variantId,
-        );
+        // Thử tối đa 5 lần khi có tranh chấp
+        for (let attempt = 0; attempt < 5; attempt++) {
 
-        const currentQuantity = existingItem?.quantity ?? 0;
-        const newQuantity = currentQuantity + quantity;
-
-        // 6. Kiểm tra tổng số lượng không vượt tồn kho
-        if (newQuantity > variant.stock) {
-            throw new BadRequestException(
-            `Không đủ hàng. Tồn kho hiện tại: ${variant.stock}`,
+            // 1. Variant đã có => cộng quantity
+            const updatedCart = await this.cartModel.findOneAndUpdate(
+                {
+                userId: userObjectId,
+                'items.variantId': variantObjectId,
+                },
+                {
+                $inc: {
+                    'items.$.quantity': quantity,
+                },
+                },
+                {
+                returnDocument: 'after',
+                runValidators: true,
+                },
             );
-        }
 
-        // 7. User chưa có Cart => tạo Cart mới
-        if (!cart) {
-            cart = new this.cartModel({
-            userId: new Types.ObjectId(userId),
-            items: [],
-            });
-        }
-
-        // 8. Thêm hoặc cộng dồn quantity
-        if (existingItem) {
-            existingItem.quantity = newQuantity;
-        } else {
-            cart.items.push({
-            productId: new Types.ObjectId(productId),
-            variantId: new Types.ObjectId(variantId),
-            quantity,
-            addedAt: new Date(),
-            });
-        }
-
-        // 9. Lưu giỏ hàng
-        try {
-            await cart.save();
-        } catch (error) {
-            // Nếu có request đồng thời tạo Cart
-            // và vi phạm unique index của userId
-            if (
-            typeof error === 'object' &&
-            error !== null &&
-            'code' in error &&
-            error.code === 11000
-            ) {
-            throw new ConflictException(
-                'Giỏ hàng vừa được cập nhật, vui lòng thử lại',
-            );
+            if (updatedCart) {
+                return {
+                message: 'Cập nhật số lượng giỏ hàng thành công',
+                cart: updatedCart,
+                };
             }
 
-            throw error;
+            // 2. Variant chưa có => thêm item mới
+            const pushedCart = await this.cartModel.findOneAndUpdate(
+                {
+                userId: userObjectId,
+                'items.variantId': { $ne: variantObjectId },
+                },
+                {
+                $push: {
+                    items: {
+                    productId: productObjectId,
+                    variantId: variantObjectId,
+                    quantity,
+                    addedAt: new Date(),
+                    },
+                },
+                },
+                {
+                returnDocument: 'after',
+                runValidators: true,
+                },
+            );
+
+            if (pushedCart) {
+                return {
+                message: 'Thêm Variant mới vào giỏ hàng thành công',
+                cart: pushedCart,
+                };
+            }
+
+            // 3. Cart có thể chưa tồn tại => thử tạo mới
+            try {
+                const newCart = await this.cartModel.create({
+                userId: userObjectId,
+                items: [
+                    {
+                    productId: productObjectId,
+                    variantId: variantObjectId,
+                    quantity,
+                    addedAt: new Date(),
+                    },
+                ],
+                });
+
+                return {
+                message: 'Tạo giỏ hàng thành công',
+                cart: newCart,
+                };
+
+            } catch (error) {
+                const isDuplicateKey =
+                typeof error === 'object' &&
+                error !== null &&
+                'code' in error &&
+                error.code === 11000;
+
+                if (!isDuplicateKey) {
+                throw error;
+                }
+
+                // Cart vừa được request khác tạo.
+                // Quay lại vòng lặp để thử $inc hoặc $push.
+            }
         }
 
-        // 10. Trả kết quả
-        return {
-            message: 'Thêm sản phẩm vào giỏ hàng thành công',
-            cart,
-        };
+        throw new ConflictException(
+            'Giỏ hàng đang được cập nhật, vui lòng thử lại',
+        );
+
     }
 
     
     async updateItem(
-        userId: string,
+        user: AuthenticatedUser,
         variantId: string,
         dto: UpdateCartItemDTO,
         ) {
+        const userId = user.id;
         // 1. Kiểm tra ID
         if (
             !isValidObjectId(userId) ||
@@ -188,6 +282,18 @@ export class CartsService {
         if (!cart) {
             throw new NotFoundException(
             'Không tìm thấy sản phẩm trong giỏ hàng',
+            );
+        }
+
+        const ability = this.abilityFactory.createForUser(user);
+
+        const cartSubject = subject(Subject.Cart, {
+            userId: String(cart.userId),
+        });
+
+        if (!ability.can(Action.Update, cartSubject)) {
+            throw new ForbiddenException(
+                'Bạn không có quyền cập nhật giỏ hàng này',
             );
         }
 
@@ -246,7 +352,7 @@ export class CartsService {
             },
             {
                 $set: {
-                'items.$.quantity': dto.quantity,
+                    'items.$.quantity': dto.quantity,
                 },
             },
             {
@@ -271,9 +377,10 @@ export class CartsService {
 
 
     async removeItem(
-        userId: string,
+        user: AuthenticatedUser,
         variantId: string,
         ) {
+        const userId = user.id;
         // 1. Kiểm tra định dạng ObjectId
         if (
             !isValidObjectId(userId) ||
@@ -286,6 +393,33 @@ export class CartsService {
 
         const userObjectId = new Types.ObjectId(userId);
         const variantObjectId = new Types.ObjectId(variantId);
+
+        const cart = await this.cartModel
+            .findOne({
+                userId: userObjectId,
+                'items.variantId': variantObjectId,
+            })
+            .select('userId')
+            .lean()
+            .exec();
+
+        if (!cart) {
+            throw new NotFoundException(
+                'Không tìm thấy Variant trong giỏ hàng',
+            );
+        }
+
+        const ability = this.abilityFactory.createForUser(user);
+
+        const cartSubject = subject(Subject.Cart, {
+            userId: String(cart.userId),
+        });
+
+        if (!ability.can(Action.Update, cartSubject)) {
+            throw new ForbiddenException(
+                'Bạn không có quyền xóa sản phẩm khỏi giỏ hàng',
+            );
+        }
 
         // 2. Tìm đúng giỏ hàng và Variant của User
         const updatedCart = await this.cartModel
@@ -330,11 +464,25 @@ export class CartsService {
     }
 
 
-    async clearCart(userId: string) {
+    async clearCart(user: AuthenticatedUser) {
+        const userId = user.id;
+
         // 1. Kiểm tra User ID hợp lệ
         if (!isValidObjectId(userId)) {
             throw new BadRequestException(
             'User ID không hợp lệ',
+            );
+        }
+        
+        const ability = this.abilityFactory.createForUser(user);
+
+        const cartSubject = subject(Subject.Cart, {
+            userId,
+        });
+
+        if (!ability.can(Action.Update, cartSubject)) {
+            throw new ForbiddenException(
+                'Bạn không có quyền xóa giỏ hàng này',
             );
         }
 

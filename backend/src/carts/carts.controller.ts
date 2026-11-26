@@ -18,12 +18,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AddCartItemDTO } from './add-cart-item.dto';
 import { UpdateCartItemDTO } from './update-cart-item.dto';
 
-type AuthenticatedRequest = Request & {
-  user?: {
-    id: string;
-    role: string;
-  };
-};
+import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 
 @Controller('carts')
 export class CartsController {
@@ -43,7 +38,7 @@ export class CartsController {
       );
     }
 
-    return this.cartsService.getMyCart(userId);
+    return this.cartsService.getMyCart(req.user!);
   }
 
     //Thêm items vào giỏ hàng
@@ -61,7 +56,7 @@ export class CartsController {
             );
         }
 
-        return this.cartsService.addItem(userId, dto);
+        return this.cartsService.addItem(req.user!, dto);
     }
     //Cập nhật item trong giỏ hàng 
     @Patch('items/:variantId')
@@ -80,7 +75,7 @@ export class CartsController {
         }
 
         return this.cartsService.updateItem(
-            userId,
+            req.user!,
             variantId,
             dto,
         );
@@ -102,7 +97,7 @@ export class CartsController {
         }
 
         return this.cartsService.removeItem(
-            userId,
+            req.user!,
             variantId,
         );
     }
@@ -121,7 +116,7 @@ export class CartsController {
             );
         }
 
-        return this.cartsService.clearCart(userId);
+        return this.cartsService.clearCart(req.user!);
     }
 
 

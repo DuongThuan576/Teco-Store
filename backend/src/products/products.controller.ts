@@ -5,6 +5,14 @@ import { UpdateProductDTO } from './update-product.dto';
 import { VariantDTO } from './variant.dto';
 import { UpdateVariantDTO } from './update-variant.dto';
 
+import { UseGuards } from '@nestjs/common';
+
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PoliciesGuard } from '../auth/authorization/policies/guards/policies.guard';
+import { CheckPolicies } from '../auth/authorization/policies/decorators/check-policies.decorator';
+
+import { Action } from '../auth/authorization/enums/action.enum';
+import { Subject } from '../auth/authorization/enums/subject.enum';
 @Controller('products')
 export class ProductsController {
     constructor(
@@ -61,32 +69,50 @@ export class ProductsController {
 
     //Tạo sản phẩm mới (admin)
     @Post()
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Create,
+        subject: Subject.Product,
+    })
     create(@Body() createProductDTO: CreateProductDTO) {
         return this.productsService.create(createProductDTO);
     }
 
     //Thêm variant mới vào sản phẩm (admin)
     @Post(':productId/variants')
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Update,
+        subject: Subject.Product,
+    })
     addVariant(
         @Param('productId') productId: string,
         @Body() variantDTO: VariantDTO,
-        ) {
-        return this.productsService.addVariant(
-            productId,
-            variantDTO,
-        );
+    ) {
+        return this.productsService.addVariant(productId, variantDTO);
     }
 
     //update product (admin)
-    @Patch(':id') 
+    @Patch(':id')
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Update,
+        subject: Subject.Product,
+    })
     update(
         @Param('id') id: string,
-        @Body() updateProductDTO: UpdateProductDTO) {
+        @Body() updateProductDTO: UpdateProductDTO,
+    ) {
         return this.productsService.update(id, updateProductDTO);
     }
 
     //route sửa variant( admin)
     @Patch(':productId/variants/:variantId')
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Update,
+        subject: Subject.Product,
+    })
     updateVariant(
         @Param('productId') productId: string,
         @Param('variantId') variantId: string,
@@ -101,18 +127,28 @@ export class ProductsController {
 
     // route xóa variant (admin)
     @Delete(':productId/variants/:variantId')
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Delete,
+        subject: Subject.Product,
+    })
     removeVariant(
-    @Param('productId') productId: string,
-    @Param('variantId') variantId: string,
+        @Param('productId') productId: string,
+        @Param('variantId') variantId: string,
     ) {
-    return this.productsService.removeVariant(
-        productId,
-        variantId,
-    );
+        return this.productsService.removeVariant(
+            productId,
+            variantId,
+        );
     }
 
     // xóa product (admin)
-    @Delete(':id') 
+    @Delete(':id')
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Delete,
+        subject: Subject.Product,
+    })
     remove(@Param('id') id: string) {
         return this.productsService.remove(id);
     }

@@ -25,39 +25,44 @@ import type {
   AuthenticatedRequest,
 } from '../auth/guards/jwt-auth.guard';
 
+import { PoliciesGuard } from '../auth/authorization/policies/guards/policies.guard';
+
+import { CheckPolicies } from '../auth/authorization/policies/decorators/check-policies.decorator';
+
+import { Action } from '../auth/authorization/enums/action.enum';
+
+import { Subject } from '../auth/authorization/enums/subject.enum';
+
 @Controller('reviews')
 export class ReviewsController {
   constructor(
     private readonly reviewsService: ReviewsService,
   ) {}
 
-  //Review
-  @Post()
-  @UseGuards(JwtAuthGuard)
-  createReview(
-    @Req() req: AuthenticatedRequest,
-    @Body() dto: CreateReviewDto,
-  ) {
-    const user = req.user;
+    //Review
+    @Post()
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Create,
+        subject: Subject.Review,
+    })
+    createReview(
+        @Req() req: AuthenticatedRequest,
+        @Body() dto: CreateReviewDto,
+    ) {
+        const user = req.user;
 
-    if (!user) {
-      throw new UnauthorizedException(
-        'Vui lòng đăng nhập',
-      );
+        if (!user) {
+            throw new UnauthorizedException(
+                'Vui lòng đăng nhập',
+            );
+        }
+
+        return this.reviewsService.createReview(
+        user.id,
+        dto,
+        );
     }
-
-    // Kiểm tra role tạm thời trước khi triển khai PBAC
-    if (user.role !== 'customer') {
-      throw new ForbiddenException(
-        'Chỉ Customer được đánh giá sản phẩm',
-      );
-    }
-
-    return this.reviewsService.createReview(
-      user.id,
-      dto,
-    );
-  }
 
 
     @Get('product/:productId')
@@ -83,13 +88,7 @@ export class ReviewsController {
             );
         }
 
-        if (user.role !== 'customer') {
-            throw new ForbiddenException(
-                'Chỉ Customer được xem đánh giá của mình',
-            );
-        }
-
-        return this.reviewsService.getMyReviews(user.id);
+        return this.reviewsService.getMyReviews(req.user!);
     }  
 
     //Cập nhật review
@@ -108,14 +107,8 @@ export class ReviewsController {
             );
         }
 
-        if (user.role !== 'customer') {
-            throw new ForbiddenException(
-                'Chỉ Customer được sửa đánh giá',
-            );
-        }
-
         return this.reviewsService.updateReview(
-            user.id,
+            req.user!,
             reviewId,
             dto,
         );
@@ -123,7 +116,11 @@ export class ReviewsController {
 
     //Xem danh sách review(admin)
     @Get('manage')
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Read,
+        subject: Subject.Review,
+    })
     getReviewsForModeration(
         @Req() req: AuthenticatedRequest,
     ) {
@@ -135,22 +132,17 @@ export class ReviewsController {
             );
         }
 
-        if (
-            user.role !== 'admin' &&
-            user.role !== 'employee'
-        ) {
-            throw new ForbiddenException(
-            'Bạn không có quyền quản lý đánh giá',
-            );
-        }
-
         return this.reviewsService
             .getReviewsForModeration();
     }
 
     //Ẩn hiện review
     @Patch(':id/moderation')
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Moderate,
+        subject: Subject.Review,
+    })
     moderateReview(
         @Req() req: AuthenticatedRequest,
         @Param('id') reviewId: string,
@@ -164,15 +156,6 @@ export class ReviewsController {
             );
         }
 
-        if (
-            user.role !== 'admin' &&
-            user.role !== 'employee'
-        ) {
-            throw new ForbiddenException(
-            'Bạn không có quyền kiểm duyệt đánh giá',
-            );
-        }
-
         return this.reviewsService.moderateReview(
             reviewId,
             dto,
@@ -182,7 +165,11 @@ export class ReviewsController {
 
     //Phản hồi review của admin        
     @Post(':id/reply')
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Reply,
+        subject: Subject.Review,
+    })
     replyToReview(
         @Req() req: AuthenticatedRequest,
         @Param('id') reviewId: string,
@@ -193,15 +180,6 @@ export class ReviewsController {
         if (!user) {
             throw new UnauthorizedException(
             'Vui lòng đăng nhập',
-            );
-        }
-
-        if (
-            user.role !== 'admin' &&
-            user.role !== 'employee'
-        ) {
-            throw new ForbiddenException(
-            'Bạn không có quyền phản hồi đánh giá',
             );
         }
 
@@ -227,14 +205,8 @@ export class ReviewsController {
             );
         }
 
-        if (user.role !== 'customer') {
-            throw new ForbiddenException(
-            'Chỉ Customer được xóa đánh giá của mình',
-            );
-        }
-
         return this.reviewsService.deleteReview(
-            user.id,
+            req.user!,
             reviewId,
         );
     }

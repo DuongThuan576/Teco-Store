@@ -21,6 +21,15 @@ import { UpdateProfileDTO } from './update-profile.dto';
 import { AuthSession } from '../auth/schemas/auth-session.schema';
 import { ChangePasswordDTO } from './change-password.dto';
 
+import { ForbiddenException } from '@nestjs/common';
+import { subject } from '@casl/ability';
+
+import { AbilityFactory } from '../auth/authorization/ability/ability.factory';
+import { Action } from '../auth/authorization/enums/action.enum';
+import { Subject } from '../auth/authorization/enums/subject.enum';
+
+import type { AuthenticatedUser } from '../auth/guards/jwt-auth.guard';
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -32,9 +41,12 @@ export class UsersService {
 
     @InjectConnection()
     private readonly connection: Connection,
+
+    private readonly abilityFactory: AbilityFactory,
   ) {}
 
-  async getMyProfile(userId: string) {
+  async getMyProfile(user: AuthenticatedUser) {
+    const userId = user.id;
     // 1. Kiểm tra userId hợp lệ
     if (!isValidObjectId(userId)) {
       throw new BadRequestException(
@@ -43,7 +55,7 @@ export class UsersService {
     }
 
     // 2. Tìm User trong MongoDB
-    const user = await this.userModel
+    const profile = await this.userModel
       .findById(new Types.ObjectId(userId))
       .select(
         'fullName email phone role status createdAt updatedAt',
@@ -52,34 +64,61 @@ export class UsersService {
       .exec();
 
     // 3. Kiểm tra User có tồn tại không
-    if (!user) {
+    if (!profile) {
       throw new NotFoundException(
         'Không tìm thấy tài khoản',
       );
     }
 
+
+    const ability = this.abilityFactory.createForUser(user);
+
+    const userSubject = subject(Subject.User, {
+        _id: String(profile._id),
+    });
+
+    if (!ability.can(Action.Read, userSubject)) {
+        throw new ForbiddenException(
+            'Bạn không có quyền xem hồ sơ này',
+        );
+    }
+
     // 4. Chỉ trả về dữ liệu cần thiết
     return {
-      id: String(user._id),
-      fullName: user.fullName,
-      email: user.email,
-      phone: user.phone,
-      role: user.role,
-      status: user.status,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
+      id: String(profile._id),
+      fullName: profile.fullName,
+      email: profile.email,
+      phone: profile.phone,
+      role: profile.role,
+      status: profile.status,
+      createdAt: profile.createdAt,
+      updatedAt: profile.updatedAt,
     };
   }
 
 
     async updateMyProfile(
-        userId: string,
+        user: AuthenticatedUser,
         dto: UpdateProfileDTO,
         ) {
+
+        const userId = user.id;
         // 1. Kiểm tra User ID
         if (!isValidObjectId(userId)) {
             throw new BadRequestException(
             'User ID không hợp lệ',
+            );
+        }
+
+        const ability = this.abilityFactory.createForUser(user);
+
+        const userSubject = subject(Subject.User, {
+            _id: userId,
+        });
+
+        if (!ability.can(Action.Update, userSubject)) {
+            throw new ForbiddenException(
+                'Bạn không có quyền cập nhật hồ sơ này',
             );
         }
 
@@ -155,13 +194,27 @@ export class UsersService {
 
 
     async changePassword(
-        userId: string,
+        user: AuthenticatedUser,
         dto: ChangePasswordDTO,
         ) {
+
+        const userId = user.id;
         // 1. Kiểm tra User ID
         if (!isValidObjectId(userId)) {
             throw new BadRequestException(
             'User ID không hợp lệ',
+            );
+        }
+
+        const ability = this.abilityFactory.createForUser(user);
+
+        const userSubject = subject(Subject.User, {
+            _id: userId,
+        });
+
+        if (!ability.can(Action.ChangePassword, userSubject)) {
+            throw new ForbiddenException(
+                'Bạn không có quyền đổi mật khẩu này',
             );
         }
 

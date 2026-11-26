@@ -21,6 +21,12 @@ import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 
 import { UserRole } from '../auth/user-role.enum';
 
+import { PoliciesGuard } from '../auth/authorization/policies/guards/policies.guard';
+import { CheckPolicies } from '../auth/authorization/policies/decorators/check-policies.decorator';
+
+import { Action } from '../auth/authorization/enums/action.enum';
+import { Subject } from '../auth/authorization/enums/subject.enum';
+
 @Controller('orders')
 export class OrdersController {
     constructor(
@@ -50,6 +56,27 @@ export class OrdersController {
             req.user.id,
             dto,
         );
+    }
+
+    // quản lý xem tất cả đơn hàng (admin)
+    @Get('manage')
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Read,
+        subject: Subject.Order,
+    })
+    @UseGuards(JwtAuthGuard)
+    getAllOrders(
+        @Req() req: AuthenticatedRequest,
+    ) {
+        const user = req.user;
+
+        if (!user) {
+            throw new UnauthorizedException(
+                'Vui lòng đăng nhập',
+            );
+        }
+        return this.ordersService.getAllOrders();
     }
 
     //Xem tất cả đơn hàng của mình
@@ -86,7 +113,7 @@ export class OrdersController {
         }
 
         return this.ordersService.getOrderDetail(
-            userId,
+            req.user!,
             orderId,
         );
     }
@@ -107,14 +134,18 @@ export class OrdersController {
         }
 
         return this.ordersService.cancelOrder(
-            userId,
+            req.user!,
             orderId,
         );
     }
 
     //thay đổi trạng thái đơn hàng(admin)
     @Patch(':id/status')
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Update,
+        subject: Subject.Order,
+    })
     updateOrderStatus(
         @Req() req: AuthenticatedRequest,
         @Param('id') orderId: string,
@@ -128,43 +159,10 @@ export class OrdersController {
             );
         }
 
-        const allowedRoles = ['admin', 'employee'];
-
-        if (!allowedRoles.includes(user.role)) {
-            throw new ForbiddenException(
-                'Bạn không có quyền cập nhật trạng thái đơn hàng',
-            );
-        }
-
         return this.ordersService.updateOrderStatus(
             orderId,
             dto,
         );
-    }
-
-    // quản lý xem tất cả đơn hàng (admin)
-    @Get('manage')
-    @UseGuards(JwtAuthGuard)
-    getAllOrders(
-        @Req() req: AuthenticatedRequest,
-    ) {
-        const user = req.user;
-
-        if (!user) {
-            throw new UnauthorizedException(
-                'Vui lòng đăng nhập',
-            );
-        }
-
-        const allowedRoles = ['admin', 'employee'];
-
-        if (!allowedRoles.includes(user.role)) {
-            throw new ForbiddenException(
-                'Bạn không có quyền xem danh sách đơn hàng',
-            );
-        }
-
-        return this.ordersService.getAllOrders();
     }
 
 }

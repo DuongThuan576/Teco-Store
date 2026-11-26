@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 
 import { InjectModel, InjectConnection } from '@nestjs/mongoose';
 import { Model, Types, ClientSession, Connection } from 'mongoose';
@@ -17,6 +17,14 @@ import { Product } from '../products/schemas/product.schema';
 import { VouchersService } from '../vouchers/vouchers.service';
 import { Payment, PaymentStatus } from '../payments/schemas/payment.schema';
 import { randomBytes } from 'node:crypto';
+
+import { subject } from '@casl/ability';
+
+import { AbilityFactory } from '../auth/authorization/ability/ability.factory';
+import { Action } from '../auth/authorization/enums/action.enum';
+import { Subject } from '../auth/authorization/enums/subject.enum';
+
+import type { AuthenticatedUser } from '../auth/guards/jwt-auth.guard';
 
 @Injectable()
 export class OrdersService {
@@ -40,6 +48,8 @@ export class OrdersService {
 
         @InjectModel(Payment.name)
         private readonly paymentModel: Model<Payment>,
+
+        private readonly abilityFactory: AbilityFactory,
     ){}
 
     async prepareOrder(
@@ -464,7 +474,8 @@ export class OrdersService {
         .exec();
         }
 
-    async getOrderDetail(userId: string, orderId: string) {
+    async getOrderDetail(user: AuthenticatedUser, orderId: string) {
+        const userId = user.id
         // 1. Kiểm tra định dạng ObjectId
         if (
             !Types.ObjectId.isValid(userId) ||
@@ -491,13 +502,27 @@ export class OrdersService {
             );
         }
 
+
+        const ability = this.abilityFactory.createForUser(user);
+
+        const orderSubject = subject(Subject.Order, {
+            userId: String(order.userId),
+        });
+
+        if (!ability.can(Action.Read, orderSubject)) {
+            throw new ForbiddenException(
+                'Bạn không có quyền xem đơn hàng này',
+            );
+        }
+
         // 4. Trả chi tiết Order
         return order;
     }
 
 
 
-    async cancelOrder(userId: string, orderId: string) {
+    async cancelOrder(user: AuthenticatedUser, orderId: string) {
+        const userId = user.id
         // 1. Kiểm tra ObjectId
         if (
             !Types.ObjectId.isValid(userId) ||
@@ -525,6 +550,20 @@ export class OrdersService {
                 'Không tìm thấy đơn hàng',
             );
         }
+
+
+        const ability = this.abilityFactory.createForUser(user);
+
+        const orderSubject = subject(Subject.Order, {
+            userId: String(order.userId),
+        });
+
+        if (!ability.can(Action.Cancel, orderSubject)) {
+            throw new ForbiddenException(
+                'Bạn không có quyền hủy đơn hàng này',
+            );
+        }
+
 
         // 4. Kiểm tra điều kiện được phép hủy
         if (

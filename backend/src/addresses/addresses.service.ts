@@ -13,6 +13,15 @@ import { Address } from './schemas/address.schema';
 import { CreateAddressDTO } from './create-address.dto';
 import { UpdateAddressDTO } from './update-address.dto';
 
+import { ForbiddenException } from '@nestjs/common';
+import { subject } from '@casl/ability';
+
+import { AbilityFactory } from '../auth/authorization/ability/ability.factory';
+import { Action } from '../auth/authorization/enums/action.enum';
+import { Subject } from '../auth/authorization/enums/subject.enum';
+
+import type { AuthenticatedUser } from '../auth/guards/jwt-auth.guard';
+
 @Injectable()
 export class AddressesService {
   constructor(
@@ -21,25 +30,56 @@ export class AddressesService {
 
     @InjectConnection()
     private readonly connection: Connection,
+
+    private readonly abilityFactory: AbilityFactory,
   ) {}
 
-  async getMyAddresses(userId: string) {
+  async getMyAddresses(user: AuthenticatedUser) {
+    const userId = user.id;
     if (!isValidObjectId(userId)) {
       throw new BadRequestException(
         'User ID không hợp lệ',
       );
     }
 
-    return this.addressModel
-      .find({
-        userId: new Types.ObjectId(userId),
-      })
-      .sort({
-        isDefault: -1,
-        createdAt: -1,
-      })
-      .lean()
-      .exec();
+    const ability = this.abilityFactory.createForUser(user);
+
+    const ownAddressSubject = subject(Subject.Address, {
+        userId,
+    });
+
+    if (!ability.can(Action.Read, ownAddressSubject)) {
+        throw new ForbiddenException(
+            'Bạn không có quyền xem danh sách địa chỉ',
+        );
+    }
+
+    
+    const addresses = await this.addressModel
+        .find({
+            userId: new Types.ObjectId(userId),
+        })
+        .sort({
+            isDefault: -1,
+            createdAt: -1,
+        })
+        .lean()
+        .exec();
+
+    for (const address of addresses) {
+        const addressSubject = subject(Subject.Address, {
+            userId: String(address.userId),
+        });
+
+    if (!ability.can(Action.Read, addressSubject)) {
+            throw new ForbiddenException(
+                'Bạn không có quyền xem danh sách địa chỉ',
+            );
+        }
+    }
+
+    return addresses;
+
   }
 
 
@@ -75,8 +115,8 @@ export class AddressesService {
             });
 
             return {
-            message: 'Thêm địa chỉ giao hàng thành công',
-            address,
+                message: 'Thêm địa chỉ giao hàng thành công',
+                address,
             };
         } catch (error) {
             // 5. Xử lý trường hợp hai request cùng lúc
@@ -98,17 +138,45 @@ export class AddressesService {
 
 
     async updateAddress(
-        userId: string,
+        user: AuthenticatedUser,
         addressId: string,
         dto: UpdateAddressDTO,
         ) {
-        // 1. Kiểm tra ObjectId
+        const userId = user.id;
+        // 1. Kiểm tra ObjectId và address
         if (
             !isValidObjectId(userId) ||
             !isValidObjectId(addressId)
         ) {
             throw new BadRequestException(
             'User ID hoặc Address ID không hợp lệ',
+            );
+        }
+
+        const ability = this.abilityFactory.createForUser(user);
+
+        const address = await this.addressModel
+            .findOne({
+                _id: new Types.ObjectId(addressId),
+                userId: new Types.ObjectId(userId),
+            })
+            .select('userId')
+            .lean()
+            .exec();
+
+        if (!address) {
+        throw new NotFoundException(
+                'Không tìm thấy địa chỉ giao hàng',
+            );
+        }
+
+        const addressSubject = subject(Subject.Address, {
+            userId: String(address.userId),
+        });
+
+        if (!ability.can(Action.Update, addressSubject)) {
+            throw new ForbiddenException(
+                'Bạn không có quyền cập nhật địa chỉ này',
             );
         }
 
@@ -180,9 +248,10 @@ export class AddressesService {
 
 
     async setDefaultAddress(
-        userId: string,
+        user: AuthenticatedUser,
         addressId: string,
         ) {
+        const userId = user.id;
         // 1. Kiểm tra ObjectId
         if (
             !isValidObjectId(userId) ||
@@ -208,9 +277,22 @@ export class AddressesService {
                 }).session(session);
 
                 if (!targetAddress) {
-                throw new NotFoundException(
-                    'Không tìm thấy địa chỉ giao hàng',
-                );
+                    throw new NotFoundException(
+                        'Không tìm thấy địa chỉ giao hàng',
+                    );
+                }
+
+
+                const ability = this.abilityFactory.createForUser(user);
+
+                const addressSubject = subject(Subject.Address, {
+                    userId: String(targetAddress.userId),
+                });
+
+                if (!ability.can(Action.Update, addressSubject)) {
+                    throw new ForbiddenException(
+                        'Bạn không có quyền đặt địa chỉ này làm mặc định',
+                    );
                 }
 
                 // 4. Nếu đã mặc định, không cần thay đổi
@@ -279,9 +361,10 @@ export class AddressesService {
 
 
     async removeAddress(
-        userId: string,
+        user: AuthenticatedUser,
         addressId: string,
         ) {
+        const userId = user.id
         // 1. Kiểm tra ObjectId
         if (
             !isValidObjectId(userId) ||
@@ -301,16 +384,29 @@ export class AddressesService {
             async (session) => {
                 // 3. Kiểm tra địa chỉ thuộc User
                 const address = await this.addressModel
-                .findOne({
-                    _id: addressObjectId,
-                    userId: userObjectId,
-                })
-                .session(session);
+                    .findOne({
+                        _id: addressObjectId,
+                        userId: userObjectId,
+                    })
+                    .session(session);
 
                 if (!address) {
-                throw new NotFoundException(
-                    'Không tìm thấy địa chỉ giao hàng',
-                );
+                    throw new NotFoundException(
+                        'Không tìm thấy địa chỉ giao hàng',
+                    );
+                }
+
+
+                const ability = this.abilityFactory.createForUser(user);
+
+                const addressSubject = subject(Subject.Address, {
+                    userId: String(address.userId),
+                });
+
+                if (!ability.can(Action.Delete, addressSubject)) {
+                    throw new ForbiddenException(
+                        'Bạn không có quyền xóa địa chỉ này',
+                    );
                 }
 
                 // 4. Nếu xóa địa chỉ mặc định,

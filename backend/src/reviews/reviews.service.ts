@@ -18,6 +18,14 @@ import { UpdateReviewDto } from './update-review.dto';
 import { ModerateReviewDto } from './moderate-review.dto';
 import { ReplyReviewDto } from './reply-review.dto';
 
+import { subject } from '@casl/ability';
+
+import { AbilityFactory } from '../auth/authorization/ability/ability.factory';
+import { Action } from '../auth/authorization/enums/action.enum';
+import { Subject } from '../auth/authorization/enums/subject.enum';
+
+import type { AuthenticatedUser } from '../auth/guards/jwt-auth.guard';
+
 @Injectable()
 export class ReviewsService {
   constructor(
@@ -29,6 +37,8 @@ export class ReviewsService {
 
     @InjectConnection()
     private readonly connection: Connection,
+
+    private readonly abilityFactory: AbilityFactory,
   ) {}
 
   async createReview(
@@ -197,10 +207,25 @@ export class ReviewsService {
     }
 
 
-    async getMyReviews(userId: string) {
+    async getMyReviews(user: AuthenticatedUser) {
+        const userId = user.id;
+
         if (!isValidObjectId(userId)) {
             throw new BadRequestException(
                 'User ID không hợp lệ',
+            );
+        }
+
+
+        const ability = this.abilityFactory.createForUser(user);
+
+        const reviewSubject = subject(Subject.Review, {
+                userId,
+            });
+
+        if (!ability.can(Action.Read, reviewSubject)) {
+            throw new ForbiddenException(
+                'Bạn không có quyền xem danh sách đánh giá này',
             );
         }
 
@@ -216,10 +241,11 @@ export class ReviewsService {
 
 
     async updateReview(
-        userId: string,
+        user: AuthenticatedUser,
         reviewId: string,
         dto: UpdateReviewDto,
         ) {
+        const userId = user.id;
         // 1. Kiểm tra ObjectId
         if (
             !isValidObjectId(userId) ||
@@ -274,6 +300,36 @@ export class ReviewsService {
             'Không có dữ liệu cần cập nhật',
             );
         }
+
+
+        const review = await this.reviewModel
+            .findOne({
+                _id: new Types.ObjectId(reviewId),
+                userId: new Types.ObjectId(userId),
+                parentId: null,
+            })
+            .select('userId')
+            .lean()
+            .exec();
+
+        if (!review) {
+            throw new NotFoundException(
+                'Không tìm thấy đánh giá của bạn',
+            );
+        }
+
+        const ability = this.abilityFactory.createForUser(user);
+
+        const reviewSubject = subject(Subject.Review, {
+            userId: String(review.userId),
+        });
+
+        if (!ability.can(Action.Update, reviewSubject)) {
+            throw new ForbiddenException(
+                'Bạn không có quyền sửa đánh giá này',
+            );
+        }
+
 
         // 4. Cập nhật đúng Review của Customer
         const updatedReview = await this.reviewModel
@@ -444,9 +500,10 @@ export class ReviewsService {
 
 
     async deleteReview(
-        userId: string,
+        user: AuthenticatedUser,
         reviewId: string,
     ) {
+        const userId = user.id; 
         // 1. Kiểm tra ObjectId
         if (
             !isValidObjectId(userId) ||
@@ -462,6 +519,37 @@ export class ReviewsService {
 
         // 2. Bắt đầu Transaction
         return this.connection.transaction(async (session) => {
+
+
+            const review = await this.reviewModel
+                .findOne({
+                    _id: reviewObjectId,
+                    userId: userObjectId,
+                    parentId: null,
+                })
+                .select('userId')
+                .session(session)
+                .lean()
+                .exec();
+
+            if (!review) {
+                throw new NotFoundException(
+                    'Không tìm thấy đánh giá của bạn',
+                );
+            }
+
+            const ability = this.abilityFactory.createForUser(user);
+
+            const reviewSubject = subject(Subject.Review, {
+                userId: String(review.userId),
+            });
+
+            if (!ability.can(Action.Delete, reviewSubject)) {
+                throw new ForbiddenException(
+                    'Bạn không có quyền xóa đánh giá này',
+                );
+            }
+
 
             // 3. Xóa đúng Review gốc thuộc Customer
             const result = await this.reviewModel.deleteOne(
