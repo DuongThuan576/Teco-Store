@@ -35,7 +35,7 @@ import { AuthSessionSchema, AuthSession } from './schemas/auth-session.schema';
 
         return {
           secret: secret,
-          signOptions: { expiresIn: '15m' as const },
+          signOptions: { expiresIn: '60m' as const },
         }
       }
     })
@@ -45,7 +45,8 @@ import { AuthSessionSchema, AuthSession } from './schemas/auth-session.schema';
 
   exports:[  
     JwtAuthGuard,
-  JwtModule,
-  MongooseModule,],
+    JwtModule,
+    MongooseModule,
+  ],
 })
 export class AuthModule {}

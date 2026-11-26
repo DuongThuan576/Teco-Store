@@ -10,6 +10,7 @@ import { AuthModule } from '../auth/auth.module';
 import { OrdersService } from './orders.service';
 import { OrdersController } from './orders.controller';
 import { VouchersModule } from '../vouchers/vouchers.module';
+import { Payment, PaymentSchema } from '../payments/schemas/payment.schema';
 
 @Module({
     imports: [
@@ -32,9 +33,14 @@ import { VouchersModule } from '../vouchers/vouchers.module';
                 name: Product.name,
                 schema: ProductSchema
             },
+            {
+                name: Payment.name,
+                schema: PaymentSchema,
+            }
         ])
     ],
     controllers: [OrdersController],
-    providers: [OrdersService]
+    providers: [OrdersService],
+    exports: [OrdersService]
 })
 export class OrdersModule { }

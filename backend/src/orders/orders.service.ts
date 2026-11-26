@@ -15,8 +15,8 @@ import { Cart } from '../carts/schemas/cart.schema'
 import { Address } from '../addresses/schemas/address.schema'
 import { Product } from '../products/schemas/product.schema';
 import { VouchersService } from '../vouchers/vouchers.service';
-import { User } from '../auth/schemas/user.schema';
-import { error } from 'node:console';
+import { Payment, PaymentStatus } from '../payments/schemas/payment.schema';
+import { randomBytes } from 'node:crypto';
 
 @Injectable()
 export class OrdersService {
@@ -37,6 +37,9 @@ export class OrdersService {
         private readonly connection: Connection,
 
         private readonly vouchersService: VouchersService,
+
+        @InjectModel(Payment.name)
+        private readonly paymentModel: Model<Payment>,
     ){}
 
     async prepareOrder(
@@ -44,10 +47,13 @@ export class OrdersService {
         dto: CreateOrderDto,
         session ?: ClientSession,
     ){
-        //Giai đoạn này chỉ hỗ trợ COD
-        if (dto.paymentMethod !== PaymentMethod.COD){
+        //hỗ trợ COD và VNPAY
+        if (
+            dto.paymentMethod !== PaymentMethod.COD &&
+            dto.paymentMethod !== PaymentMethod.VNPAY
+        ){
             throw new BadRequestException(
-                'VNPay chưa được hỗ trợ ở giai đoạn này',
+                'Phương thức thanh toán không được hỗ trợ',
             );
         }
 
@@ -378,7 +384,7 @@ export class OrdersService {
                 {session},
             );
 
-
+            //Tạo VoucherUsage
             if (voucherId) {
                 await this.vouchersService.createVoucherUsage(
                     voucherId,
@@ -386,6 +392,36 @@ export class OrdersService {
                     order._id,
                     discountAmount,
                     session,
+                );
+            }
+
+            // 2. Tạo Payment pending nếu chọn VNPay
+            if (dto.paymentMethod === PaymentMethod.VNPAY) {
+                if (
+                    !Number.isSafeInteger(totalAmount) ||
+                    totalAmount <= 0
+                ) {
+                    throw new BadRequestException(
+                        'Số tiền thanh toán VNPay phải lớn hơn 0',
+                    );
+                }
+
+                const transactionCode = randomBytes(16)
+                    .toString('hex');
+
+                await this.paymentModel.create(
+                    [
+                        {
+                            orderId: order._id,
+                            userId: userObjectId,
+                            provider: 'vnpay',
+                            transactionCode,
+                            amount: totalAmount,
+                            currency: 'VND',
+                            status: PaymentStatus.PENDING,
+                        },
+                    ],
+                    { session },
                 );
             }
 
@@ -524,52 +560,7 @@ export class OrdersService {
             );
         }
 
-        // 6. Gộp số lượng nếu có Variant trùng nhau
-        const quantities = new Map<
-                string,
-                {
-                    productId: Types.ObjectId;
-                    variantId: Types.ObjectId;
-                    quantity: number;
-                }
-            >();
-
-        for (const item of order.items) {
-            const key = `${item.productId}:${item.variantId}`;
-            const existing = quantities.get(key);
-
-            if (existing) {
-                existing.quantity += item.quantity;
-            } else {
-                quantities.set(key, {
-                    productId: item.productId,
-                    variantId: item.variantId,
-                    quantity: item.quantity,
-                });
-            }
-        }
-
-        // 7. Hoàn tồn kho cho từng Variant
-        for (const item of quantities.values()) {
-            const result = await this.productModel.updateOne(
-                    {
-                        _id: item.productId,
-                        'variants._id': item.variantId,
-                    },
-                    {
-                        $inc: {
-                            'variants.$.stock': item.quantity,
-                        },
-                    },
-                    { session },
-                );
-
-            if (result.modifiedCount !== 1) {
-                throw new ConflictException(
-                    'Không thể hoàn tồn kho sản phẩm',
-                );
-            }
-        }
+        await this.restoreOrderStock(order, session);
 
         // 8. Hoàn lượt Voucher nếu Order có sử dụng
         if (order.voucherId) {
@@ -676,5 +667,118 @@ export class OrdersService {
             .lean()
             .exec();
     }
+
+
+    private async restoreOrderStock(
+        order: Order,
+        session: ClientSession,
+    ): Promise<void> {
+        // Gộp số lượng nếu có Variant trùng nhau
+        const quantities = new Map<
+            string,
+            {
+            productId: Types.ObjectId;
+            variantId: Types.ObjectId;
+            quantity: number;
+            }
+        >();
+
+        for (const item of order.items) {
+            const key = `${item.productId}:${item.variantId}`;
+            const existing = quantities.get(key);
+
+            if (existing) {
+            existing.quantity += item.quantity;
+            } else {
+            quantities.set(key, {
+                productId: item.productId,
+                variantId: item.variantId,
+                quantity: item.quantity,
+            });
+            }
+        }
+
+        // Hoàn stock bằng phép cập nhật nguyên tử
+        for (const item of quantities.values()) {
+            const result = await this.productModel.updateOne(
+            {
+                _id: item.productId,
+                'variants._id': item.variantId,
+            },
+            {
+                $inc: {
+                'variants.$.stock': item.quantity,
+                },
+            },
+            { session },
+            );
+
+            if (result.modifiedCount !== 1) {
+            throw new ConflictException(
+                'Không thể hoàn tồn kho sản phẩm',
+            );
+            }
+        }
+    }
+
+
+    async releaseFailedVnpayOrder(
+        orderId: Types.ObjectId,
+        userId: Types.ObjectId,
+        session: ClientSession,
+    ): Promise<void> {
+        // 1. Tìm đơn VNPay đang chờ xác nhận
+        const order = await this.orderModel.findOne({
+            _id: orderId,
+            userId,
+            paymentMethod: 'vnpay',
+            paymentStatus: 'pending',
+            orderStatus: 'cho_xac_nhan',
+        }).session(session);
+
+        if (!order) {
+            throw new ConflictException(
+            'Order không đủ điều kiện hoàn tài nguyên',
+            );
+        }
+
+        // 2. Đổi trạng thái có điều kiện
+        const result = await this.orderModel.updateOne(
+            {
+            _id: orderId,
+            userId,
+            paymentMethod: 'vnpay',
+            paymentStatus: 'pending',
+            orderStatus: 'cho_xac_nhan',
+            },
+            {
+            $set: {
+                paymentStatus: 'failed',
+                orderStatus: 'da_huy',
+            },
+            },
+            { session },
+        );
+
+        if (result.modifiedCount !== 1) {
+            throw new ConflictException(
+            'Order đã được xử lý bởi request khác',
+            );
+        }
+
+        // 3. Hoàn tồn kho
+        await this.restoreOrderStock(order, session);
+
+        // 4. Hoàn lượt Voucher nếu Order có sử dụng
+        if (order.voucherId) {
+            await this.vouchersService.reverseVoucherUsage(
+            order._id,
+            userId,
+            new Types.ObjectId(String(order.voucherId)),
+            session,
+            );
+        }
+    }
+
 
 }
