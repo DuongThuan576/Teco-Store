@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { Cart } from '../carts/schemas/cart.schema'
 import { Address } from '../addresses/schemas/address.schema'
 import { Product } from '../products/schemas/product.schema';
+import { VouchersService } from '../vouchers/vouchers.service';
 import { User } from '../auth/schemas/user.schema';
 import { error } from 'node:console';
 
@@ -34,6 +35,8 @@ export class OrdersService {
 
         @InjectConnection()
         private readonly connection: Connection,
+
+        private readonly vouchersService: VouchersService,
     ){}
 
     async prepareOrder(
@@ -311,6 +314,40 @@ export class OrdersService {
                 }
             }
 
+
+            let voucherId: Types.ObjectId | null = null;
+            let voucherCode: string | null = null;
+
+            let discountAmount = 0;
+
+            // Customer có gửi mã Voucher hay không?
+            if (dto.voucherCode) {
+                const voucherResult =
+                    await this.vouchersService.reserveVoucherForOrder(
+                        userObjectId,
+                        dto.voucherCode,
+                        prepared.subtotal,
+                        session,
+                    );
+
+                voucherId = voucherResult.voucherId;
+                voucherCode = voucherResult.voucherCode;
+                discountAmount = voucherResult.discountAmount;
+            }
+
+            // Backend tự tính số tiền cuối cùng
+            const totalAmount =
+            prepared.subtotal - discountAmount;
+
+            if (
+                !Number.isSafeInteger(totalAmount) ||
+                totalAmount < 0
+                ) {
+                throw new BadRequestException(
+                    'Tổng tiền đơn hàng không hợp lệ',
+                );
+            }
+
             //Tạo mã đơn hàng
             const orderCode = `DH-${randomUUID()}`
 
@@ -324,12 +361,12 @@ export class OrdersService {
                         items: prepared.items,
                         shippingAddress: prepared.shippingAddress,
 
-                        voucherId: null,
-                        voucherCode: null,
+                        voucherId,
+                        voucherCode,
 
                         subtotal: prepared.subtotal,
-                        discountAmount: prepared.discountAmount,
-                        totalAmount: prepared.totalAmount,
+                        discountAmount,
+                        totalAmount,
 
                         paymentMethod: prepared.paymentMethod,
                         paymentStatus: 'pending',
@@ -340,6 +377,17 @@ export class OrdersService {
                 ],
                 {session},
             );
+
+
+            if (voucherId) {
+                await this.vouchersService.createVoucherUsage(
+                    voucherId,
+                    userObjectId,
+                    order._id,
+                    discountAmount,
+                    session,
+                );
+            }
 
             //làm rỗng giỏ hàng
             const cartResult = await this.cartModel.updateOne(
@@ -523,7 +571,17 @@ export class OrdersService {
             }
         }
 
-        // 8. Trả Order sau khi cập nhật
+        // 8. Hoàn lượt Voucher nếu Order có sử dụng
+        if (order.voucherId) {
+            await this.vouchersService.reverseVoucherUsage(
+                order._id,
+                userObjectId,
+                new Types.ObjectId(String(order.voucherId)),
+                session,
+            );
+        }
+
+        // 9. Trả Order sau khi cập nhật
         const cancelledOrder = await this.orderModel
             .findById(orderObjectId)
             .session(session)

@@ -16,6 +16,8 @@ import { OrdersController } from './orders/orders.controller';
 import { OrdersService } from './orders/orders.service';
 import { OrdersModule } from './orders/orders.module';
 import { ReviewsModule } from './reviews/reviews.module';
+import { VouchersModule } from './vouchers/vouchers.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -52,6 +54,10 @@ import { ReviewsModule } from './reviews/reviews.module';
     OrdersModule,
 
     ReviewsModule,
+
+    VouchersModule,
+
+    PaymentsModule,
   ],
 
   controllers: [AppController],

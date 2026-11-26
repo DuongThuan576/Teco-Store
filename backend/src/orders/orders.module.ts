@@ -9,9 +9,11 @@ import { AuthModule } from '../auth/auth.module';
 
 import { OrdersService } from './orders.service';
 import { OrdersController } from './orders.controller';
+import { VouchersModule } from '../vouchers/vouchers.module';
 
 @Module({
     imports: [
+        VouchersModule,
         AuthModule,
         MongooseModule.forFeature([
             {

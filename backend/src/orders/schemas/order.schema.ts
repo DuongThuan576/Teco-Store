@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
-import { HydratedDocument, Types } from "mongoose";
+import { HydratedDocument, Types, Schema as MongooseSchema } from "mongoose";
 
 export type OrderDocument = HydratedDocument<Order>;
 
@@ -85,7 +85,7 @@ export class Order {
     })
     shippingAddress: ShippingAddress;
 
-    @Prop({type: Types.ObjectId, default:null})
+    @Prop({type: MongooseSchema.Types.ObjectId, ref:'Voucher' ,default:null})
     voucherId?: Types.ObjectId|null;
 
     @Prop({type:String, default: null})
@@ -94,7 +94,7 @@ export class Order {
     @Prop({required:true,min:0})
     subtotal: number;
 
-    @Prop({default: null, min:0})
+    @Prop({type: Number, required:true, default: 0, min:0})
     discountAmount: number
 
     @Prop({ required : true, min:0})
