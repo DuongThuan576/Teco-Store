@@ -118,10 +118,16 @@ export class AuthService {
             ver: user.tokenVersion ?? 0 ,
         };
 
-        const accessToken = await this.jwtService.signAsync(payload)
+        const refreshToken = await this.createRefreshSession(
+            String(user._id),
+        );
 
-        const refreshToken = await this.createRefreshSession(String(user._id));
+        const sessionId = refreshToken.split('.')[0];
 
+        const accessToken = await this.jwtService.signAsync({
+            ...payload,
+            sid: sessionId,
+        });
         //Đăng nhập hợp lệ 
         return {
             message: 'Xác thực thông tin đăng nhập thành công',
@@ -248,7 +254,8 @@ export class AuthService {
         const accessToken = await this.jwtService.signAsync({
             sub: String(user._id),
             role: user.role,
-            ver: user.tokenVersion ?? 0
+            ver: user.tokenVersion ?? 0,
+            sid: sessionId
         });
     
         //Trả cặp token mới
@@ -297,59 +304,141 @@ export class AuthService {
     }
 
     // Lấy các phiên đăng nhập
-    async getSessions(page = 1, limit = 10) {
-        // 1. Tính số document cần bỏ qua
+    async getSessions(
+        page = 1,
+        limit = 10,
+        userId?: string,
+    ) {
+        // 1. Kiểm tra userId nếu Admin có truyền
+        if (userId && !Types.ObjectId.isValid(userId)) {
+            throw new BadRequestException(
+                'User ID không hợp lệ',
+            );
+        }
+
+        // 2. Xây dựng điều kiện truy vấn
+        const filter = userId
+            ? { userId: new Types.ObjectId(userId) }
+            : {};
+
         const skip = (page - 1) * limit;
 
-        // 2. Chỉ lấy những trường cần thiết
+        // 3. Truy vấn danh sách và tổng số phiên
         const [sessions, total] = await Promise.all([
             this.authSessionModel
-            .find({})
+            .find(filter)
             .select(
                 '_id userId createdAt updatedAt expiresAt revokedAt',
             )
-            .sort({ createdAt: -1 })
+            .sort({ createdAt: -1, _id: -1 })
             .skip(skip)
             .limit(limit)
             .lean()
             .exec(),
 
-            this.authSessionModel.countDocuments({}),
+            this.authSessionModel
+            .countDocuments(filter)
+            .exec(),
         ]);
 
-        // 3. Xác định trạng thái từng phiên
+        // 4. Xác định trạng thái
         const now = new Date();
 
         const data = sessions.map((session) => {
             let status = 'active';
 
             if (session.revokedAt) {
-            status = 'revoked';
+                status = 'revoked';
             } else if (session.expiresAt <= now) {
-            status = 'expired';
+                status = 'expired';
             }
 
             return {
-            id: String(session._id),
-            userId: String(session.userId),
-            status,
-            createdAt: session.createdAt,
-            updatedAt: session.updatedAt,
-            expiresAt: session.expiresAt,
-            revokedAt: session.revokedAt,
+                id: String(session._id),
+                userId: String(session.userId),
+                status,
+                createdAt: session.createdAt,
+                updatedAt: session.updatedAt,
+                expiresAt: session.expiresAt,
+                revokedAt: session.revokedAt,
             };
         });
 
-        // 4. Trả kết quả phân trang
         return {
-            data,
-            pagination: {
-            page,
-            limit,
-            total,
-            totalPages: Math.ceil(total / limit),
+                data,
+                pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit),
             },
         };
     }
+
+
+    async revokeSession(
+        sessionId: string,
+        adminId: string,
+    ) {
+        if (!Types.ObjectId.isValid(sessionId)) {
+            throw new BadRequestException(
+            'Session ID không hợp lệ',
+            );
+        }
+
+        const session = await this.authSessionModel
+            .findById(sessionId)
+            .select('userId revokedAt expiresAt')
+            .exec();
+
+        if (!session) {
+            throw new NotFoundException(
+            'Không tìm thấy Session',
+            );
+        }
+
+        // Không cho Admin tự thu hồi phiên của chính mình
+        // trong API quản trị này
+        if (String(session.userId) === adminId) {
+            throw new ForbiddenException(
+            'Không thể tự thu hồi Session của mình',
+            );
+        }
+
+        const updated = await this.authSessionModel
+            .findOneAndUpdate(
+            {
+                _id: session._id,
+                userId: session.userId,
+                revokedAt: null,
+                expiresAt: { $gt: new Date() },
+            },
+            {
+                $set: {
+                revokedAt: new Date(),
+                },
+            },
+            {
+                returnDocument: 'after',
+            },
+            )
+            .select('_id userId revokedAt')
+            .lean()
+            .exec();
+
+        if (!updated) {
+            throw new ConflictException(
+            'Session đã bị thu hồi hoặc hết hạn',
+            );
+        }
+
+        return {
+            message: 'Thu hồi Session thành công',
+            sessionId: String(updated._id),
+            userId: String(updated.userId),
+            revokedAt: updated.revokedAt,
+        };
+    }
+
 
 }

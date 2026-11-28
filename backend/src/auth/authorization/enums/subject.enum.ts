@@ -2,6 +2,7 @@ export enum Subject {
     //tài khoản
     User = 'User',
     UserManagement = 'UserManagement',
+    AuthSession = 'AuthSession',
 
     
     //danh mục và sản phẩm

@@ -3,12 +3,14 @@ import { JwtService } from "@nestjs/jwt";
 import { InjectModel } from "@nestjs/mongoose";
 import { Model, Types } from "mongoose";
 import { Request } from "express";
+import { AuthSession } from '../schemas/auth-session.schema';
 
 import { User } from "../schemas/user.schema";
 import { UserRole } from "../user-role.enum";
 
 interface JwtPayLoad {
     sub: string;
+    sid: string;
     role: UserRole;
     ver: number;
     iat?:number;
@@ -32,6 +34,9 @@ export class JwtAuthGuard implements CanActivate{
 
         @InjectModel(User.name)
         private readonly userModel:Model<User>,
+
+        @InjectModel(AuthSession.name)
+        private readonly authSessionModel:Model<AuthSession>,
     ){}
 
     async canActivate(context: ExecutionContext,): Promise<boolean> {
@@ -100,6 +105,35 @@ export class JwtAuthGuard implements CanActivate{
             throw new UnauthorizedException(
                 'Access Token bị vô hiệu hóa vui lòng đăng nhập lại'
             )
+        }
+
+
+        // Kiểm tra Session ID trong Access Token
+        if (
+            typeof payload.sid !== 'string' ||
+            !/^[a-f0-9]{24}$/i.test(payload.sid)
+        ) {
+            throw new UnauthorizedException(
+                'Access Token thiếu Session ID hợp lệ'
+            );
+        }
+
+        // Kiểm tra Session có thuộc User này và còn hiệu lực không
+        const session = await this.authSessionModel
+            .findOne({
+                _id: new Types.ObjectId(payload.sid),
+                userId: user._id,
+                revokedAt: null,
+                expiresAt: { $gt: new Date() },
+            })
+            .select('_id')
+            .lean()
+            .exec();
+
+        if (!session) {
+            throw new UnauthorizedException(
+                'Phiên đăng nhập đã bị thu hồi hoặc hết hạn'
+            );
         }
 
         //Gắn user đã xác thực vào request

@@ -78,7 +78,8 @@ export class AbilityFactory {
 
             can(Action.Read, Subject.UserManagement);
             can(Action.Update, Subject.UserManagement);
-
+            can(Action.Read, Subject.AuthSession);
+            can(Action.Update, Subject.AuthSession);
         }
 
         // EMPLOYEE

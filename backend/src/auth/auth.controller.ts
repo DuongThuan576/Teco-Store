@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, Req, UseGuards, Get, Res, UnauthorizedException,
+import { Param, Patch, Controller, Post, Body, HttpCode, HttpStatus, Req, UseGuards, Get, Res, UnauthorizedException,
     Query, DefaultValuePipe, ParseIntPipe, ForbiddenException, BadRequestException
  } from '@nestjs/common';
 import { AuthService } from './auth.service';
@@ -8,6 +8,11 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import type { AuthenticatedRequest } from './guards/jwt-auth.guard';
 import type { Response, Request } from 'express';
 import { UserRole } from './user-role.enum';
+
+import { PoliciesGuard } from './authorization/policies/guards/policies.guard';
+import { CheckPolicies } from './authorization/policies/decorators/check-policies.decorator';
+import { Action } from './authorization/enums/action.enum';
+import { Subject } from './authorization/enums/subject.enum';
 
 @Controller('auth')
 export class AuthController {
@@ -113,33 +118,51 @@ export class AuthController {
 
     //Xem các sessions đăng nhập (admin)
     @Get('sessions')
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Read,
+        subject: Subject.AuthSession,
+    })
     async getSessions(
-        @Req() req: AuthenticatedRequest,
-
         @Query('page', new DefaultValuePipe(1), ParseIntPipe)
         page: number,
 
         @Query('limit', new DefaultValuePipe(10), ParseIntPipe)
         limit: number,
-        ) {
-        // 1. Chỉ Admin được xem danh sách phiên
-        if (req.user?.role !== UserRole.ADMIN) {
-            throw new ForbiddenException(
-            'Chỉ Admin được phép quản lý phiên đăng nhập',
-            );
-        }
 
-        // 2. Kiểm tra giới hạn phân trang
+        @Query('userId')
+        userId?: string,
+        ) {
         if (page < 1 || limit < 1 || limit > 100) {
             throw new BadRequestException(
             'page phải >= 1 và limit phải từ 1 đến 100',
             );
         }
 
-        // 3. Gọi Service lấy danh sách phiên
-        return this.authService.getSessions(page, limit);
+        return this.authService.getSessions(
+            page,
+            limit,
+            userId,
+        );
     }
+
+    //tăng version authsession(admin)
+    @Patch('sessions/:id/revoke')
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Update,
+        subject: Subject.AuthSession,
+    })
+        revokeSession(
+        @Param('id') sessionId: string,
+        @Req() req: AuthenticatedRequest,
+        ) {
+        return this.authService.revokeSession(
+            sessionId,
+            req.user!.id,
+        );
+    }
+
 
 
 
