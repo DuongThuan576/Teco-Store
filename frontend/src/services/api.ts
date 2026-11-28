@@ -1,6 +1,8 @@
 import {
   Address,
+  AdminUserItem,
   AuthResponse,
+  AuthSessionItem,
   BackendCart,
   Brand,
   Category,
@@ -17,6 +19,8 @@ import {
   CreateVoucherDTO,
   LoginDTO,
   Order,
+  PaginatedSessionsResponse,
+  PaginatedUsersResponse,
   Product,
   ProductLine,
   ProductReviewsResponse,
@@ -61,6 +65,20 @@ export function setAccessToken(token: string | null) {
 
 export function getAccessToken(): string | null {
   return accessTokenMemory;
+}
+
+type ConfirmHandler = (message: string, title?: string) => Promise<boolean>;
+let globalConfirmHandler: ConfirmHandler | null = null;
+
+export function registerConfirmHandler(handler: ConfirmHandler | null) {
+  globalConfirmHandler = handler;
+}
+
+export function confirmDialog(message: string, title?: string): Promise<boolean> {
+  if (globalConfirmHandler) {
+    return globalConfirmHandler(message, title);
+  }
+  return Promise.resolve(window.confirm(message));
 }
 
 let refreshPromise: Promise<string | null> | null = null;
@@ -288,6 +306,26 @@ export const authApi = {
       setAccessToken(null);
     }
   },
+  // Admin Session Management
+  getSessions: (page = 1, limit = 10, userId?: string) => {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: String(limit),
+    });
+    if (userId && userId.trim()) {
+      params.set('userId', userId.trim());
+    }
+    return fetchJson<PaginatedSessionsResponse>(`/auth/sessions?${params.toString()}`);
+  },
+  revokeSession: (sessionId: string) =>
+    fetchJson<{
+      message: string;
+      sessionId: string;
+      userId: string;
+      revokedAt: string;
+    }>(`/auth/sessions/${sessionId}/revoke`, {
+      method: 'PATCH',
+    }),
 };
 
 // ================= USERS API (/api/users) =================
@@ -302,6 +340,25 @@ export const usersApi = {
     fetchJson<{ message: string }>('/users/me/change-password', {
       method: 'PATCH',
       body: JSON.stringify(dto),
+    }),
+  // Admin User Management
+  getAllUsers: (page = 1, limit = 10) => {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: String(limit),
+    });
+    return fetchJson<PaginatedUsersResponse>(`/users?${params.toString()}`);
+  },
+  getUserDetail: (id: string) => fetchJson<AdminUserItem>(`/users/${id}`),
+  updateUserStatus: (id: string, status: 'active' | 'inactive') =>
+    fetchJson<{ message: string; user: AdminUserItem }>(`/users/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
+  updateUserRole: (id: string, role: 'customer' | 'employee') =>
+    fetchJson<{ message: string; user: AdminUserItem }>(`/users/${id}/role`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
     }),
 };
 

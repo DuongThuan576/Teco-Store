@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { Brand, Category, Product, ProductLine } from '../types/api';
 import {
@@ -15,7 +15,9 @@ interface CategoryPageProps {
   products: Product[];
   productLines?: ProductLine[];
   loading: boolean;
-  onAddToCart: (product: Product) => void;
+  onAddToCart: (product: Product, isBuyNow?: boolean) => void;
+  compareIds?: string[];
+  onToggleCompare?: (product: Product) => void;
 }
 
 type SortOption = 'best' | 'price-asc' | 'price-desc' | 'promo' | 'newest';
@@ -27,10 +29,22 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
   productLines = [],
   loading,
   onAddToCart,
+  compareIds = [],
+  onToggleCompare,
 }) => {
   const { slug } = useParams<{ slug: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+
+  const brandScrollRef = useRef<HTMLDivElement | null>(null);
+  const seriesScrollRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollHorizontal = (
+    ref: React.RefObject<HTMLDivElement | null>,
+    offset: number,
+  ) => {
+    ref.current?.scrollBy({ left: offset, behavior: 'smooth' });
+  };
 
   const currentCategorySlug = slug || 'dien-thoai';
   const selectedBrandSlug = searchParams.get('brand');
@@ -345,10 +359,6 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
             ({filteredProducts.length} sản phẩm)
           </span>
         </div>
-        <div className="flex items-center gap-2 text-xs text-emerald-600 font-semibold bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full w-fit">
-          <span className="material-symbols-outlined text-[16px]">verified</span>
-          100% Phân phối chính thức - Bảo hành 12 tháng 1 đổi 1
-        </div>
       </div>
 
       {/* ================= TOP PROMOTIONAL BANNER ================= */}
@@ -390,15 +400,39 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
 
       {/* ================= BRAND FILTER PILLS (Clickbuy Style) ================= */}
       <div className="bg-white border border-border-subtle rounded-xl p-4 shadow-xs mb-4">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="material-symbols-outlined text-primary text-[18px]">
-            branding_watermark
-          </span>
-          <span className="text-xs font-bold text-text-primary uppercase tracking-wider">
-            Thương hiệu:
-          </span>
+        <div className="flex items-center justify-between gap-2 mb-2.5">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary text-[18px]">
+              branding_watermark
+            </span>
+            <span className="text-xs font-bold text-text-primary uppercase tracking-wider">
+              Thương hiệu:
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => scrollHorizontal(brandScrollRef, -260)}
+              className="w-7 h-7 rounded-lg border border-border-subtle bg-surface-page hover:border-primary hover:text-primary flex items-center justify-center cursor-pointer"
+              title="Kéo sang trái"
+            >
+              <span className="material-symbols-outlined text-[16px]">chevron_left</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollHorizontal(brandScrollRef, 260)}
+              className="w-7 h-7 rounded-lg border border-border-subtle bg-surface-page hover:border-primary hover:text-primary flex items-center justify-center cursor-pointer"
+              title="Kéo sang phải"
+            >
+              <span className="material-symbols-outlined text-[16px]">chevron_right</span>
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+        <div
+          ref={brandScrollRef}
+          className="flex items-center gap-2 overflow-x-auto thin-scrollbar pt-1 pb-1"
+        >
           {brandPills.map((pill) => {
             const isSelected = selectedBrandSlug === pill.slug;
             return (
@@ -406,7 +440,7 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
                 key={pill.name}
                 type="button"
                 onClick={() => handleBrandSelect(pill.slug)}
-                className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg border text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                className={`h-9 inline-flex items-center justify-center gap-2 px-3.5 rounded-lg border text-xs font-semibold leading-none whitespace-nowrap transition-all cursor-pointer ${
                   isSelected
                     ? 'border-primary ring-2 ring-primary/20 bg-blue-50 text-primary shadow-xs font-bold'
                     : 'border-border-subtle text-slate-700 bg-white hover:border-primary hover:text-primary hover:bg-slate-50'
@@ -436,15 +470,45 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
         {/* Series / Dòng sản phẩm (từ ProductLines thật trong MongoDB) */}
         {availableProductLines.length > 0 && (
           <div className="mt-3 pt-3 border-t border-border-subtle/70">
-            <div className="text-[11px] font-bold text-text-secondary uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <span className="material-symbols-outlined text-[15px] text-primary">category</span>
-              <span>Dòng sản phẩm / Series:</span>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="text-[11px] font-bold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[15px] text-primary">
+                  category
+                </span>
+                <span>Dòng sản phẩm / Series:</span>
+              </div>
+
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => scrollHorizontal(seriesScrollRef, -260)}
+                  className="w-6 h-6 rounded-md border border-border-subtle bg-surface-page hover:border-primary hover:text-primary flex items-center justify-center cursor-pointer"
+                  title="Kéo sang trái"
+                >
+                  <span className="material-symbols-outlined text-[15px]">
+                    chevron_left
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => scrollHorizontal(seriesScrollRef, 260)}
+                  className="w-6 h-6 rounded-md border border-border-subtle bg-surface-page hover:border-primary hover:text-primary flex items-center justify-center cursor-pointer"
+                  title="Kéo sang phải"
+                >
+                  <span className="material-symbols-outlined text-[15px]">
+                    chevron_right
+                  </span>
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+            <div
+              ref={seriesScrollRef}
+              className="flex items-center gap-2 overflow-x-auto thin-scrollbar pt-1 pb-1"
+            >
               <button
                 type="button"
                 onClick={() => handleProductLineSelect(null)}
-                className={`px-3 py-1 rounded-lg border text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${
+                className={`h-8 inline-flex items-center justify-center px-3 rounded-lg border text-xs font-medium leading-none whitespace-nowrap transition-all cursor-pointer ${
                   !selectedProductLineSlug
                     ? 'border-primary bg-blue-50 text-primary font-bold'
                     : 'border-border-subtle text-slate-600 bg-white hover:border-primary/50'
@@ -459,7 +523,7 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
                     key={pl._id}
                     type="button"
                     onClick={() => handleProductLineSelect(pl.slug)}
-                    className={`px-3 py-1 rounded-lg border text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${
+                    className={`h-8 inline-flex items-center justify-center px-3 rounded-lg border text-xs font-medium leading-none whitespace-nowrap transition-all cursor-pointer ${
                       isSelected
                         ? 'border-primary bg-blue-50 text-primary font-bold'
                         : 'border-border-subtle text-slate-600 bg-white hover:border-primary/50'
@@ -497,7 +561,7 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
           )}
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* Price Range Filter */}
           <div>
             <label className="block text-[11px] font-semibold text-text-secondary mb-1">
@@ -506,7 +570,7 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
             <select
               value={selectedPriceRange || ''}
               onChange={(e) => setSelectedPriceRange(e.target.value || null)}
-              className="w-full text-xs border border-border-subtle rounded-lg px-2.5 py-2 bg-surface-page focus:outline-none focus:border-primary font-medium text-text-primary"
+              className="w-full text-xs border border-border-subtle rounded-lg px-3 py-2.5 bg-surface-page focus:outline-none focus:border-primary font-medium text-text-primary"
             >
               {priceOptions.map((opt) => (
                 <option key={opt.label} value={opt.value || ''}>
@@ -524,7 +588,7 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
             <select
               value={selectedStorage || ''}
               onChange={(e) => setSelectedStorage(e.target.value || null)}
-              className="w-full text-xs border border-border-subtle rounded-lg px-2.5 py-2 bg-surface-page focus:outline-none focus:border-primary font-medium text-text-primary"
+              className="w-full text-xs border border-border-subtle rounded-lg px-3 py-2.5 bg-surface-page focus:outline-none focus:border-primary font-medium text-text-primary"
             >
               <option value="">Tất cả dung lượng</option>
               {storageOptions.map((st) => (
@@ -532,31 +596,6 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
                   {st}
                 </option>
               ))}
-            </select>
-          </div>
-
-          {/* Special Feature */}
-          <div>
-            <label className="block text-[11px] font-semibold text-text-secondary mb-1">
-              Tính năng đặc biệt
-            </label>
-            <select className="w-full text-xs border border-border-subtle rounded-lg px-2.5 py-2 bg-surface-page focus:outline-none focus:border-primary font-medium text-text-primary">
-              <option value="">Tất cả tính năng</option>
-              <option value="5g">Hỗ trợ 5G</option>
-              <option value="oled">Màn hình OLED / 120Hz</option>
-              <option value="water">Kháng nước IP68</option>
-            </select>
-          </div>
-
-          {/* Promotional Policy */}
-          <div>
-            <label className="block text-[11px] font-semibold text-text-secondary mb-1">
-              Chính sách ưu đãi
-            </label>
-            <select className="w-full text-xs border border-border-subtle rounded-lg px-2.5 py-2 bg-surface-page focus:outline-none focus:border-primary font-medium text-text-primary">
-              <option value="">Tất cả ưu đãi</option>
-              <option value="installment">Trả góp 0% Lãi suất</option>
-              <option value="tradein">Trợ giá Thu cũ đổi mới</option>
             </select>
           </div>
         </div>
@@ -736,6 +775,7 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
                 const imageUrl = getProductImage(product, index);
                 const price = primaryVariant?.price;
                 const brand = brands.find((b) => b._id === product.brandId);
+                const isCompared = compareIds.includes(product._id);
 
                 return (
                   <div
@@ -749,6 +789,26 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
                     <div>
                       {/* Image */}
                       <div className="relative aspect-square w-full rounded-lg bg-surface-page overflow-hidden mb-3 p-3 flex items-center justify-center">
+                        {onToggleCompare && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onToggleCompare(product);
+                            }}
+                            className={`absolute top-2 left-2 z-10 px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs ${
+                              isCompared
+                                ? 'bg-primary text-white'
+                                : 'bg-white/90 hover:bg-primary hover:text-white text-slate-700 border border-border-subtle'
+                            }`}
+                            title="Thêm vào bảng so sánh sản phẩm"
+                          >
+                            <span className="material-symbols-outlined text-[13px]">
+                              compare_arrows
+                            </span>
+                            <span>{isCompared ? 'Đã chọn' : 'So sánh'}</span>
+                          </button>
+                        )}
                         {!product.isActive && (
                           <span className="absolute top-2 right-2 z-10 bg-slate-700 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
                             Ẩn / Test
@@ -793,26 +853,50 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
                       </h3>
                     </div>
 
-                    <div className="pt-3">
-                      <div className="flex items-baseline gap-2 flex-wrap">
+                    <div className="pt-3 space-y-2.5">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
                         <span className="text-price-lg font-price-lg text-badge-discount">
                           {formatVndPrice(price)}
                         </span>
+                        {totalStock > 0 ? (
+                          <span className="text-emerald-600 font-semibold text-[11px] flex items-center gap-0.5">
+                            <span className="material-symbols-outlined text-[13px]">
+                              check_circle
+                            </span>
+                            Sẵn hàng
+                          </span>
+                        ) : (
+                          <span className="text-red-500 font-semibold text-[11px]">
+                            Tạm hết
+                          </span>
+                        )}
                       </div>
 
-                      <div className="flex items-center justify-between text-xs text-text-secondary mt-2 pt-2 border-t border-border-subtle/60">
-                        <span className="text-[11px] text-slate-500 font-medium">
-                          {product.variants?.length || 1} biến thể
-                        </span>
+                      <div className="flex flex-col gap-1.5 pt-2 border-t border-border-subtle/60">
                         <button
                           type="button"
+                          disabled={totalStock <= 0}
                           onClick={(e) => {
                             e.stopPropagation();
-                            onAddToCart(product);
+                            onAddToCart(product, true);
                           }}
-                          className="px-3 py-1 bg-primary text-white text-[11px] font-bold rounded hover:bg-surface-tint active:scale-95 transition-all cursor-pointer"
+                          className="w-full py-2 px-3 rounded-lg bg-badge-discount hover:bg-red-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer shadow-2xs disabled:opacity-40"
                         >
-                          Thêm vào giỏ
+                          <span>Mua ngay</span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={totalStock <= 0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onAddToCart(product, false);
+                          }}
+                          className="w-full py-2 px-3 rounded-lg bg-white border border-primary text-primary hover:bg-blue-50 text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer shadow-2xs disabled:opacity-40"
+                        >
+                          <span className="material-symbols-outlined text-[15px]">
+                            add_shopping_cart
+                          </span>
+                          <span>Thêm vào giỏ</span>
                         </button>
                       </div>
                     </div>
@@ -891,60 +975,6 @@ export const CategoryPage: React.FC<CategoryPageProps> = ({
             )}
           </>
         )}
-      </div>
-
-      {/* ================= SEO & BUYING ADVICE BOTTOM CARD (Clickbuy Style) ================= */}
-      <div className="mt-10 bg-white border border-border-subtle rounded-2xl p-6 sm:p-8 shadow-xs">
-        <h3 className="text-headline-sm font-headline-sm text-text-primary mb-2">
-          Kinh nghiệm chọn mua {categoryTitle.toLowerCase()} chính hãng phù hợp tại TecoStore
-        </h3>
-        <p className="text-xs text-text-secondary leading-relaxed">
-          {categoryTitle} là thiết bị công nghệ thiết yếu không thể thiếu trong kỷ nguyên số. Tại hệ thống TecoStore, tất cả các mẫu máy đều có nguồn gốc xuất xứ rõ ràng, mã phân phối chính hãng VN/A cho thị trường Việt Nam với đầy đủ hoá đơn VAT điện tử và gói bảo hành toàn diện.
-        </p>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 pt-4 border-t border-border-subtle/70">
-          <div className="flex items-start gap-3">
-            <span className="material-symbols-outlined text-[24px] text-primary">
-              verified
-            </span>
-            <div>
-              <h4 className="text-xs font-bold text-text-primary">
-                Cam kết 100% Chính Hãng VN/A
-              </h4>
-              <p className="text-[11px] text-text-secondary mt-0.5">
-                Máy mới nguyên seal từ Apple, Samsung, Xiaomi... Phụ kiện đồng bộ theo tiêu chuẩn nhà sản xuất, bảo hành điện tử chính xác.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3">
-            <span className="material-symbols-outlined text-[24px] text-emerald-600">
-              autorenew
-            </span>
-            <div>
-              <h4 className="text-xs font-bold text-text-primary">
-                1 Đổi 1 Trong 30 Ngày
-              </h4>
-              <p className="text-[11px] text-text-secondary mt-0.5">
-                Yên tâm trải nghiệm máy. Nếu phát sinh bất kỳ lỗi phần cứng từ nhà sản xuất, TecoStore đổi máy mới ngay lập tức không chờ đợi.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3">
-            <span className="material-symbols-outlined text-[24px] text-purple-600">
-              credit_card
-            </span>
-            <div>
-              <h4 className="text-xs font-bold text-text-primary">
-                Trả Góp 0% Lãi Suất
-              </h4>
-              <p className="text-[11px] text-text-secondary mt-0.5">
-                Liên kết hơn 25 ngân hàng đối tác và các công ty tài chính Home Credit, FE Credit, HD SAISON với thủ tục duyệt hồ sơ chỉ 5 phút.
-              </p>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );

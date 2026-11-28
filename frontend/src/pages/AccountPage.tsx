@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   addressesApi,
   authApi,
+  confirmDialog,
   formatVndPrice,
   ordersApi,
   paymentsApi,
@@ -45,6 +46,17 @@ export const AccountPage: React.FC<AccountPageProps> = ({
       ? requestedTab
       : 'profile',
   );
+
+  useEffect(() => {
+    if (
+      requestedTab === 'profile' ||
+      requestedTab === 'addresses' ||
+      requestedTab === 'orders' ||
+      requestedTab === 'vouchers'
+    ) {
+      setActiveTab(requestedTab);
+    }
+  }, [requestedTab, location.key]);
   const [loadingLogout, setLoadingLogout] = useState(false);
 
   // ================= TAB 1: PROFILE & CHANGE PASSWORD STATE =================
@@ -124,8 +136,8 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id, currentUser?._id]);
 
-  const loadAddresses = useCallback(async () => {
-    setLoadingAddresses(true);
+  const loadAddresses = useCallback(async (silent = false) => {
+    if (!silent) setLoadingAddresses(true);
     setAddressError(null);
     try {
       const list = await addressesApi.getMyAddresses();
@@ -133,12 +145,12 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     } catch (err: unknown) {
       setAddressError(err instanceof Error ? err.message : 'Không thể tải danh sách địa chỉ');
     } finally {
-      setLoadingAddresses(false);
+      if (!silent) setLoadingAddresses(false);
     }
   }, []);
 
-  const loadOrders = useCallback(async () => {
-    setLoadingOrders(true);
+  const loadOrders = useCallback(async (silent = false) => {
+    if (!silent) setLoadingOrders(true);
     setOrdersError(null);
     try {
       const list = await ordersApi.getUserOrders();
@@ -146,7 +158,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     } catch (err: unknown) {
       setOrdersError(err instanceof Error ? err.message : 'Không thể tải lịch sử đơn hàng');
     } finally {
-      setLoadingOrders(false);
+      if (!silent) setLoadingOrders(false);
     }
   }, []);
 
@@ -334,9 +346,15 @@ export const AccountPage: React.FC<AccountPageProps> = ({
       } else {
         await addressesApi.createAddress(payload);
       }
+      const wasEditing = Boolean(editingAddressId);
       setShowAddressForm(false);
       setEditingAddressId(null);
-      await loadAddresses();
+      await loadAddresses(true);
+      alert(
+        wasEditing
+          ? 'Đã cập nhật địa chỉ nhận hàng thành công!'
+          : 'Đã thêm địa chỉ nhận hàng mới thành công!',
+      );
     } catch (err: unknown) {
       setAddressError(err instanceof Error ? err.message : 'Lưu địa chỉ thất bại.');
     } finally {
@@ -349,7 +367,8 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     setAddressError(null);
     try {
       await addressesApi.setDefaultAddress(id);
-      await loadAddresses();
+      await loadAddresses(true);
+      alert('Đã đặt làm địa chỉ nhận hàng mặc định!');
     } catch (err: unknown) {
       setAddressError(err instanceof Error ? err.message : 'Không thể đặt địa chỉ mặc định.');
     } finally {
@@ -358,14 +377,20 @@ export const AccountPage: React.FC<AccountPageProps> = ({
   };
 
   const handleDeleteAddress = async (addr: Address) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa địa chỉ nhận hàng của "${addr.receiverName}"?`)) {
+    if (
+      !(await confirmDialog(
+        `Bạn có chắc chắn muốn xóa địa chỉ nhận hàng của "${addr.receiverName}"?`,
+        'Xác nhận xóa địa chỉ',
+      ))
+    ) {
       return;
     }
     setBusyAddressId(addr._id);
     setAddressError(null);
     try {
       await addressesApi.removeAddress(addr._id);
-      await loadAddresses();
+      await loadAddresses(true);
+      alert(`Đã xóa địa chỉ nhận hàng của "${addr.receiverName}"!`);
     } catch (err: unknown) {
       setAddressError(err instanceof Error ? err.message : 'Không thể xóa địa chỉ này.');
     } finally {
@@ -388,7 +413,13 @@ export const AccountPage: React.FC<AccountPageProps> = ({
   };
 
   const handleCancelOrder = async (order: Order) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn hủy đơn hàng ${order.orderCode}?`)) return;
+    if (
+      !(await confirmDialog(
+        `Bạn có chắc chắn muốn hủy đơn hàng ${order.orderCode}?`,
+        'Xác nhận hủy đơn hàng',
+      ))
+    )
+      return;
 
     setCancellingId(order._id);
     try {
@@ -399,7 +430,7 @@ export const AccountPage: React.FC<AccountPageProps> = ({
       alert(
         `Đã hủy đơn hàng ${order.orderCode} thành công. Tồn kho & lượt voucher (nếu có) đã được hoàn trả.`,
       );
-      void loadOrders();
+      void loadOrders(true);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Hủy đơn hàng thất bại');
     } finally {
@@ -568,8 +599,8 @@ export const AccountPage: React.FC<AccountPageProps> = ({
             {currentUser.role === 'admin'
               ? 'Quản trị viên'
               : currentUser.role === 'employee'
-              ? 'Nhân viên vận hành'
-              : 'Khách hàng thành viên'}
+              ? 'Nhân viên'
+              : 'Khách hàng'}
           </span>
 
           {createdAtDate && (
@@ -685,17 +716,22 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                 </div>
 
                 {profileFeedback && (
-                  <div
-                    className={`p-3.5 rounded-xl text-xs font-semibold flex items-center gap-2 ${
-                      profileFeedback.type === 'success'
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        : 'bg-red-50 text-badge-discount border border-red-200'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-[18px]">
-                      {profileFeedback.type === 'success' ? 'check_circle' : 'error'}
-                    </span>
-                    <span>{profileFeedback.text}</span>
+                  <div className="p-3.5 rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50 via-blue-50/70 to-white text-blue-900 shadow-xs text-xs font-semibold flex items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0">
+                        <span className="material-symbols-outlined text-[16px]">
+                          {profileFeedback.type === 'success' ? 'check_circle' : 'info'}
+                        </span>
+                      </span>
+                      <span>{profileFeedback.text}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setProfileFeedback(null)}
+                      className="text-blue-400 hover:text-blue-700 cursor-pointer"
+                    >
+                      ✕
+                    </button>
                   </div>
                 )}
 
@@ -777,17 +813,22 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                 </div>
 
                 {passwordFeedback && (
-                  <div
-                    className={`p-3.5 rounded-xl text-xs font-semibold flex items-center gap-2 ${
-                      passwordFeedback.type === 'success'
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        : 'bg-red-50 text-badge-discount border border-red-200'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-[18px]">
-                      {passwordFeedback.type === 'success' ? 'check_circle' : 'error'}
-                    </span>
-                    <span>{passwordFeedback.text}</span>
+                  <div className="p-3.5 rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50 via-blue-50/70 to-white text-blue-900 shadow-xs text-xs font-semibold flex items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0">
+                        <span className="material-symbols-outlined text-[16px]">
+                          {passwordFeedback.type === 'success' ? 'check_circle' : 'info'}
+                        </span>
+                      </span>
+                      <span>{passwordFeedback.text}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPasswordFeedback(null)}
+                      className="text-blue-400 hover:text-blue-700 cursor-pointer"
+                    >
+                      ✕
+                    </button>
                   </div>
                 )}
 
@@ -840,9 +881,6 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                 </div>
 
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-                  <p className="text-[11px] text-text-secondary">
-                    * Vì lý do an toàn, sau khi đổi mật khẩu tất cả phiên đăng nhập cũ sẽ tự động thu hồi để bạn đăng nhập lại.
-                  </p>
                   <button
                     type="submit"
                     disabled={changingPassword}

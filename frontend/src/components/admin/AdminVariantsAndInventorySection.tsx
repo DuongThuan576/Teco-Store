@@ -7,6 +7,7 @@ import {
   ProductVariant,
 } from '../../types/api';
 import {
+  confirmDialog,
   formatVndPrice,
   getProductImage,
   getTotalStock,
@@ -41,10 +42,14 @@ export const AdminVariantsPage: React.FC<AdminVariantsPageProps> = ({
   useEffect(() => {
     if (initialProductId) {
       setSelectedProductId(initialProductId);
-    } else if (!selectedProductId && products.length > 0) {
+    }
+  }, [initialProductId]);
+
+  useEffect(() => {
+    if (!selectedProductId && products.length > 0) {
       setSelectedProductId(products[0]._id);
     }
-  }, [initialProductId, products, selectedProductId]);
+  }, [products, selectedProductId]);
 
   const selectedProduct = useMemo(
     () => products.find((p) => p._id === selectedProductId) || products[0] || null,
@@ -185,6 +190,11 @@ export const AdminVariantsPage: React.FC<AdminVariantsPageProps> = ({
       }
       setShowVariantModal(false);
       await onRefreshCatalog();
+      alert(
+        editingVariant
+          ? `Đã cập nhật phiên bản SKU "${editingVariant.sku}" thành công!`
+          : `Đã thêm phiên bản SKU "${varSku.trim().toUpperCase()}" thành công!`,
+      );
     } catch (err: unknown) {
       setModalError(err instanceof Error ? err.message : 'Lưu phiên bản SKU thất bại.');
     } finally {
@@ -198,10 +208,17 @@ export const AdminVariantsPage: React.FC<AdminVariantsPageProps> = ({
       alert('Sản phẩm bắt buộc phải có tối thiểu 1 phiên bản SKU.');
       return;
     }
-    if (!window.confirm(`Xóa phiên bản SKU "${v.sku}" khỏi ${selectedProduct.name}?`)) return;
+    if (
+      !(await confirmDialog(
+        `Xóa phiên bản SKU "${v.sku}" khỏi ${selectedProduct.name}?`,
+        'Xác nhận xóa phiên bản SKU',
+      ))
+    )
+      return;
     try {
       await productsApi.removeVariant(selectedProduct._id, v._id);
       await onRefreshCatalog();
+      alert(`Đã xóa phiên bản SKU "${v.sku}" thành công!`);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Xóa biến thể thất bại');
     }
@@ -212,6 +229,7 @@ export const AdminVariantsPage: React.FC<AdminVariantsPageProps> = ({
     if (!selectedProduct || selectedVariantKeys.length === 0) return;
     setApplyingBatch(true);
     try {
+      const count = selectedVariantKeys.length;
       for (const v of variants) {
         const key = v._id || v.sku;
         if (selectedVariantKeys.includes(key) && v._id) {
@@ -223,6 +241,7 @@ export const AdminVariantsPage: React.FC<AdminVariantsPageProps> = ({
       setBatchStockDelta(0);
       setSelectedVariantKeys([]);
       await onRefreshCatalog();
+      alert(`Đã cập nhật tồn kho hàng loạt cho ${count} phiên bản SKU!`);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Cập nhật hàng loạt thất bại');
     } finally {
@@ -287,7 +306,7 @@ export const AdminVariantsPage: React.FC<AdminVariantsPageProps> = ({
             className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
           >
             <span className="material-symbols-outlined text-[18px]">add_circle</span>
-            <span>+ Thêm phiên bản mới</span>
+            <span> Thêm phiên bản mới</span>
           </button>
         </div>
       </div>
@@ -313,15 +332,6 @@ export const AdminVariantsPage: React.FC<AdminVariantsPageProps> = ({
             Đang đồng bộ SKU
           </span>
         </div>
-
-        <button
-          type="button"
-          onClick={() => void onRefreshCatalog()}
-          className="px-3.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
-        >
-          <span className="material-symbols-outlined text-[16px]">sync</span>
-          <span>Đồng bộ lại</span>
-        </button>
       </div>
 
       {/* Parent Product Summary Card */}
@@ -519,15 +529,6 @@ export const AdminVariantsPage: React.FC<AdminVariantsPageProps> = ({
           </div>
 
           <div className="flex items-center gap-3 text-slate-500">
-            <button
-              type="button"
-              onClick={() => void onRefreshCatalog()}
-              className="hover:text-blue-600 inline-flex items-center gap-1 cursor-pointer font-medium"
-            >
-              <span className="material-symbols-outlined text-[14px]">refresh</span>
-              Làm mới dữ liệu
-            </button>
-            <span>•</span>
             <span>
               Hiển thị <strong>{filteredVariants.length}</strong> / {variants.length} phiên bản
             </span>
@@ -1056,6 +1057,7 @@ export const AdminInventoryPage: React.FC<AdminInventoryPageProps> = ({
     try {
       await productsApi.updateVariant(prodId, v._id, { stock: Math.max(0, Number(targetStock)) });
       await onRefreshCatalog();
+      alert(`Đã cập nhật tồn kho SKU "${v.sku}" thành ${Math.max(0, Number(targetStock))} sản phẩm!`);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Cập nhật tồn kho thất bại');
     } finally {

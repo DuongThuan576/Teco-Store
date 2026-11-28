@@ -32,8 +32,8 @@ export const AdminVouchersSection: React.FC = () => {
   const [saving, setSaving] = useState<boolean>(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const loadVouchers = useCallback(async () => {
-    setLoading(true);
+  const loadVouchers = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const list = await vouchersApi.getAllVouchers();
@@ -41,7 +41,7 @@ export const AdminVouchersSection: React.FC = () => {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Không thể tải danh sách Voucher');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -86,7 +86,12 @@ export const AdminVouchersSection: React.FC = () => {
   const handleToggleActive = async (v: Voucher) => {
     try {
       await vouchersApi.updateVoucher(v._id, { isActive: !v.isActive });
-      await loadVouchers();
+      await loadVouchers(true);
+      alert(
+        !v.isActive
+          ? `Đã kích hoạt lại mã giảm giá "${v.code}"!`
+          : `Đã tạm khóa mã giảm giá "${v.code}"!`,
+      );
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Không thể cập nhật trạng thái Voucher');
     }
@@ -142,7 +147,12 @@ export const AdminVouchersSection: React.FC = () => {
       }
 
       setShowModal(false);
-      await loadVouchers();
+      await loadVouchers(true);
+      alert(
+        editingVoucher
+          ? `Đã cập nhật mã giảm giá "${editingVoucher.code}" thành công!`
+          : `Đã tạo mã giảm giá "${code.trim().toUpperCase()}" thành công!`,
+      );
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : 'Lưu mã giảm giá thất bại');
     } finally {

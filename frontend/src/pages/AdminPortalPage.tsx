@@ -17,6 +17,10 @@ import {
   AdminPermissionsPage,
   AdminProductLinesPage,
 } from '../components/admin/AdminDashboardAndSystemSection';
+import {
+  AdminSessionsSection,
+  AdminUsersSection,
+} from '../components/admin/AdminUsersAndSessionsSection';
 
 interface AdminPortalPageProps {
   currentUser: User | null;
@@ -106,6 +110,20 @@ const SIDEBAR_ITEMS: SidebarMenuItem[] = [
   },
   // HỆ THỐNG
   {
+    path: '/admin/users',
+    label: 'Quản lý người dùng',
+    icon: 'group',
+    group: 'Hệ thống',
+    adminOnly: true,
+  },
+  {
+    path: '/admin/sessions',
+    label: 'Quản lý phiên đăng nhập',
+    icon: 'devices',
+    group: 'Hệ thống',
+    adminOnly: true,
+  },
+  {
     path: '/admin/permissions',
     label: 'Nhân viên và phân quyền',
     icon: 'admin_panel_settings',
@@ -129,6 +147,9 @@ export const AdminPortalPage: React.FC<AdminPortalPageProps> = ({
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState<boolean>(false);
   const [globalSearch, setGlobalSearch] = useState<string>('');
   const [focusedVariantProductId, setFocusedVariantProductId] = useState<string | undefined>(
+    undefined,
+  );
+  const [focusedSessionUserId, setFocusedSessionUserId] = useState<string | undefined>(
     undefined,
   );
   const [productToEdit, setProductToEdit] = useState<Product | null>(null);
@@ -578,6 +599,24 @@ export const AdminPortalPage: React.FC<AdminPortalPageProps> = ({
 
           {activeItem.path === '/admin/reviews' && (
             <AdminReviewsModerationSection products={products} />
+          )}
+
+          {activeItem.path === '/admin/users' && isAdmin && (
+            <AdminUsersSection
+              currentUser={currentUser}
+              onViewUserSessions={(userId) => {
+                setFocusedSessionUserId(userId);
+                handleNavigateAdmin('/admin/sessions');
+              }}
+            />
+          )}
+
+          {activeItem.path === '/admin/sessions' && isAdmin && (
+            <AdminSessionsSection
+              currentUser={currentUser}
+              initialUserId={focusedSessionUserId}
+              onClearInitialUserId={() => setFocusedSessionUserId(undefined)}
+            />
           )}
 
           {activeItem.path === '/admin/permissions' && (

@@ -10,6 +10,7 @@ import {
   User,
 } from '../types/api';
 import {
+  confirmDialog,
   formatVndPrice,
   getPrimaryVariant,
   ordersApi,
@@ -58,6 +59,8 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | undefined>(undefined);
+  const [selectedStorage, setSelectedStorage] = useState<string | null>(null);
+  const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [activeImageIndex, setActiveImageIndex] = useState<number>(0);
   const [loadingSku, setLoadingSku] = useState(false);
 
@@ -98,6 +101,8 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
         setProduct(data);
         const primary = getPrimaryVariant(data);
         setSelectedVariant(primary);
+        setSelectedStorage(primary?.storage || null);
+        setSelectedColor(primary?.color || null);
         setError(null);
       })
       .catch((err: unknown) => {
@@ -328,7 +333,13 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
 
   const handleDeleteReview = async (reviewId: string) => {
     if (!product?._id) return;
-    if (!window.confirm('Bạn có chắc chắn muốn xóa đánh giá này không?')) return;
+    if (
+      !(await confirmDialog(
+        'Bạn có chắc chắn muốn xóa đánh giá này không?',
+        'Xác nhận xóa đánh giá',
+      ))
+    )
+      return;
 
     setDeletingReviewId(reviewId);
     try {
@@ -337,6 +348,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
         type: 'success',
         text: 'Đã xóa đánh giá của bạn.',
       });
+      alert('Đã xóa đánh giá sản phẩm thành công!');
       await Promise.all([
         loadProductReviews(product._id),
         loadCustomerReviewContext(),
@@ -413,18 +425,8 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
     new Set(variants.map((v) => v.storage).filter(Boolean)),
   ) as string[];
 
-  const handleSelectOption = async (color?: string, storage?: string) => {
-    const targetColor = color ?? selectedVariant?.color;
-    const targetStorage = storage ?? selectedVariant?.storage;
-
-    const matched =
-      variants.find((v) => v.color === targetColor && v.storage === targetStorage) ||
-      variants.find((v) => (color ? v.color === color : v.storage === storage));
-
-    if (!matched) return;
-
+  const syncVariantFromBackend = async (matched: ProductVariant) => {
     setSelectedVariant(matched);
-
     if (product.slug && matched.sku) {
       setLoadingSku(true);
       try {
@@ -438,6 +440,66 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
         setLoadingSku(false);
       }
     }
+  };
+
+  const handleSelectStorage = async (storage: string) => {
+    // Bấm lại vào dung lượng đang chọn sẽ bỏ khóa dung lượng để chọn tự do màu khác
+    if (selectedStorage === storage) {
+      setSelectedStorage(null);
+      return;
+    }
+
+    setSelectedStorage(storage);
+
+    const exactWithCurrentColor = selectedColor
+      ? variants.find(
+          (v) => v.storage === storage && v.color === selectedColor && (v.stock || 0) > 0,
+        )
+      : undefined;
+
+    const fallbackInStock = variants.find(
+      (v) => v.storage === storage && (v.stock || 0) > 0,
+    );
+    const anyForStorage = variants.find((v) => v.storage === storage);
+
+    const matched = exactWithCurrentColor || fallbackInStock || anyForStorage;
+    if (!matched) return;
+
+    if (!exactWithCurrentColor && matched.color) {
+      setSelectedColor(matched.color);
+    }
+
+    await syncVariantFromBackend(matched);
+  };
+
+  const handleSelectColor = async (color: string) => {
+    // Bấm lại vào màu đang chọn sẽ bỏ khóa màu để chọn tự do dung lượng khác
+    if (selectedColor === color) {
+      setSelectedColor(null);
+      return;
+    }
+
+    setSelectedColor(color);
+
+    const exactWithCurrentStorage = selectedStorage
+      ? variants.find(
+          (v) => v.color === color && v.storage === selectedStorage && (v.stock || 0) > 0,
+        )
+      : undefined;
+
+    const fallbackInStock = variants.find(
+      (v) => v.color === color && (v.stock || 0) > 0,
+    );
+    const anyForColor = variants.find((v) => v.color === color);
+
+    const matched = exactWithCurrentStorage || fallbackInStock || anyForColor;
+    if (!matched) return;
+
+    if (!exactWithCurrentStorage && matched.storage) {
+      setSelectedStorage(matched.storage);
+    }
+
+    await syncVariantFromBackend(matched);
   };
 
   const category = categories.find((c) => c._id === product.categoryId);
@@ -586,30 +648,81 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
               <div className="mb-5">
                 <div className="text-xs font-bold text-text-primary uppercase tracking-wider mb-2 flex items-center justify-between">
                   <span>1. Chọn dung lượng bộ nhớ:</span>
-                  <span className="text-primary font-bold">{selectedVariant?.storage}</span>
+                  <span className="text-primary font-bold">
+                    {selectedStorage || 'Chưa khóa dung lượng (Bấm để chọn)'}
+                  </span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                   {storages.map((st) => {
-                    const isSelected = selectedVariant?.storage === st;
-                    const sampleVar = variants.find(
-                      (v) =>
-                        v.storage === st &&
-                        (!selectedVariant?.color || v.color === selectedVariant.color),
-                    );
+                    const isSelected = selectedStorage === st;
+                    const totalStockForStorage = variants
+                      .filter((v) => v.storage === st)
+                      .reduce((sum, v) => sum + (v.stock || 0), 0);
+
+                    const exactVarWithSelectedColor = selectedColor
+                      ? variants.find(
+                          (v) => v.storage === st && v.color === selectedColor,
+                        )
+                      : undefined;
+
+                    const isOutWithSelectedColor =
+                      Boolean(selectedColor) &&
+                      (!exactVarWithSelectedColor ||
+                        (exactVarWithSelectedColor.stock || 0) <= 0);
+
+                    const isDisabled =
+                      totalStockForStorage <= 0 || isOutWithSelectedColor;
+
+                    const sampleVar =
+                      exactVarWithSelectedColor ||
+                      variants.find((v) => v.storage === st && (v.stock || 0) > 0) ||
+                      variants.find((v) => v.storage === st);
+
                     return (
                       <button
                         key={st}
                         type="button"
-                        onClick={() => handleSelectOption(undefined, st)}
-                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                          isSelected
-                            ? 'border-primary bg-blue-50/70 ring-2 ring-primary/30 shadow-xs'
-                            : 'border-border-subtle bg-white hover:border-primary/50'
+                        disabled={isDisabled}
+                        onClick={() => void handleSelectStorage(st)}
+                        title={
+                          isDisabled
+                            ? selectedColor
+                              ? `Bản ${st} - Màu ${selectedColor} hiện đã hết hàng`
+                              : `Dung lượng ${st} hiện đã hết hàng`
+                            : isSelected
+                              ? 'Bấm lần nữa để bỏ khóa dung lượng'
+                              : `Chọn dung lượng ${st}`
+                        }
+                        className={`p-3 rounded-xl border text-left transition-all relative overflow-hidden ${
+                          isDisabled
+                            ? 'border-dashed border-slate-300 bg-slate-100/80 opacity-60 cursor-not-allowed'
+                            : isSelected
+                              ? 'border-primary bg-blue-50/70 ring-2 ring-primary/30 shadow-xs cursor-pointer'
+                              : 'border-border-subtle bg-white hover:border-primary/50 cursor-pointer'
                         }`}
                       >
-                        <div className="text-sm font-bold text-text-primary">{st}</div>
+                        <div className="flex items-center justify-between gap-1">
+                          <span
+                            className={`text-sm font-bold ${
+                              isDisabled
+                                ? 'text-slate-400 line-through'
+                                : 'text-text-primary'
+                            }`}
+                          >
+                            {st}
+                          </span>
+                          {isDisabled && (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-extrabold text-[9px] uppercase">
+                              Hết hàng
+                            </span>
+                          )}
+                        </div>
                         {sampleVar && (
-                          <div className="text-xs text-badge-discount font-bold mt-1">
+                          <div
+                            className={`text-xs font-bold mt-1 ${
+                              isDisabled ? 'text-slate-400' : 'text-badge-discount'
+                            }`}
+                          >
                             {formatVndPrice(sampleVar.price)}
                           </div>
                         )}
@@ -625,27 +738,65 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
               <div className="mb-5">
                 <div className="text-xs font-bold text-text-primary uppercase tracking-wider mb-2 flex items-center justify-between">
                   <span>2. Chọn màu sắc:</span>
-                  <span className="text-primary font-bold">{selectedVariant?.color}</span>
+                  <span className="text-primary font-bold">
+                    {selectedColor || 'Chưa khóa màu (Bấm để chọn)'}
+                  </span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                   {colors.map((col) => {
-                    const isSelected = selectedVariant?.color === col;
+                    const isSelected = selectedColor === col;
+                    const totalStockForColor = variants
+                      .filter((v) => v.color === col)
+                      .reduce((sum, v) => sum + (v.stock || 0), 0);
+
+                    const exactVarWithSelectedStorage = selectedStorage
+                      ? variants.find(
+                          (v) => v.color === col && v.storage === selectedStorage,
+                        )
+                      : undefined;
+
+                    const isOutWithSelectedStorage =
+                      Boolean(selectedStorage) &&
+                      (!exactVarWithSelectedStorage ||
+                        (exactVarWithSelectedStorage.stock || 0) <= 0);
+
+                    const isDisabled =
+                      totalStockForColor <= 0 || isOutWithSelectedStorage;
+
                     return (
                       <button
                         key={col}
                         type="button"
-                        onClick={() => handleSelectOption(col, undefined)}
-                        className={`px-3.5 py-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
-                          isSelected
-                            ? 'border-primary bg-blue-50/70 text-primary ring-2 ring-primary/30 shadow-xs'
-                            : 'border-border-subtle bg-white text-text-primary hover:border-primary/50'
+                        disabled={isDisabled}
+                        onClick={() => void handleSelectColor(col)}
+                        title={
+                          isDisabled
+                            ? selectedStorage
+                              ? `Màu ${col} - Bản ${selectedStorage} hiện đã hết hàng`
+                              : `Màu ${col} hiện đã hết hàng`
+                            : isSelected
+                              ? 'Bấm lần nữa để bỏ khóa màu sắc'
+                              : `Chọn màu ${col}`
+                        }
+                        className={`px-3.5 py-2.5 rounded-xl border text-xs font-bold flex items-center justify-between gap-1.5 transition-all ${
+                          isDisabled
+                            ? 'border-dashed border-slate-300 bg-slate-100/80 text-slate-400 opacity-60 cursor-not-allowed'
+                            : isSelected
+                              ? 'border-primary bg-blue-50/70 text-primary ring-2 ring-primary/30 shadow-xs cursor-pointer'
+                              : 'border-border-subtle bg-white text-text-primary hover:border-primary/50 cursor-pointer'
                         }`}
                       >
-                        <span>{col}</span>
-                        {isSelected && (
-                          <span className="material-symbols-outlined text-[16px] text-primary">
-                            check_circle
+                        <span className={isDisabled ? 'line-through' : ''}>{col}</span>
+                        {isDisabled ? (
+                          <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-extrabold text-[9px] uppercase shrink-0">
+                            Hết hàng
                           </span>
+                        ) : (
+                          isSelected && (
+                            <span className="material-symbols-outlined text-[16px] text-primary shrink-0">
+                              check_circle
+                            </span>
+                          )
                         )}
                       </button>
                     );
@@ -658,18 +809,24 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
             <div className="space-y-3 mb-6">
               <button
                 type="button"
+                disabled={(selectedVariant?.stock ?? 0) <= 0}
                 onClick={() => onAddToCart(product, selectedVariant, true)}
-                className="w-full py-4 bg-badge-discount hover:bg-red-600 text-white font-extrabold text-base rounded-xl shadow-lg hover:shadow-xl transition-all flex flex-col items-center justify-center cursor-pointer active:scale-98"
+                className="w-full py-4 bg-badge-discount hover:bg-red-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-extrabold text-base rounded-xl shadow-lg hover:shadow-xl transition-all flex flex-col items-center justify-center cursor-pointer active:scale-98"
               >
-                <span>MUA NGAY</span>
+                <span>
+                  {(selectedVariant?.stock ?? 0) > 0 ? 'MUA NGAY' : 'TẠM HẾT HÀNG'}
+                </span>
                 <span className="text-xs font-normal opacity-90">
-                  Giao tận nơi hoặc nhận tại cửa hàng
+                  {(selectedVariant?.stock ?? 0) > 0
+                    ? 'Giao tận nơi hoặc nhận tại cửa hàng'
+                    : 'Phiên bản này hiện đã hết tồn kho'}
                 </span>
               </button>
               <button
                 type="button"
+                disabled={(selectedVariant?.stock ?? 0) <= 0}
                 onClick={() => onAddToCart(product, selectedVariant, false)}
-                className="w-full py-3 bg-white border border-primary text-primary hover:bg-blue-50 font-bold text-sm rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                className="w-full py-3 bg-white border border-primary text-primary hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-sm rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
               >
                 <span className="material-symbols-outlined text-[20px]">add_shopping_cart</span>
                 <span>Thêm vào giỏ hàng</span>
@@ -792,17 +949,22 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
 
         {/* Feedback Banner */}
         {reviewFeedback && (
-          <div
-            className={`p-3.5 rounded-xl text-xs font-semibold flex items-center gap-2 ${
-              reviewFeedback.type === 'success'
-                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                : 'bg-red-50 text-badge-discount border border-red-200'
-            }`}
-          >
-            <span className="material-symbols-outlined text-[18px]">
-              {reviewFeedback.type === 'success' ? 'check_circle' : 'error'}
-            </span>
-            <span>{reviewFeedback.text}</span>
+          <div className="p-3.5 rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50 via-blue-50/70 to-white text-blue-900 shadow-xs text-xs font-semibold flex items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5">
+              <span className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-[16px]">
+                  {reviewFeedback.type === 'success' ? 'check_circle' : 'info'}
+                </span>
+              </span>
+              <span>{reviewFeedback.text}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setReviewFeedback(null)}
+              className="text-blue-400 hover:text-blue-700 cursor-pointer"
+            >
+              ✕
+            </button>
           </div>
         )}
 

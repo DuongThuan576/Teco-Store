@@ -10,6 +10,7 @@ import {
 import {
   brandsApi,
   categoriesApi,
+  confirmDialog,
   formatVndPrice,
   getTotalStock,
   ordersApi,
@@ -266,11 +267,18 @@ export const AdminCategoriesPage: React.FC<{
       } else {
         await categoriesApi.create(payload);
       }
+      const savedName = name.trim();
+      const wasEditing = Boolean(editingId);
       setName('');
       setSlug('');
       setParentId('');
       setEditingId(null);
       await onRefreshCatalog();
+      alert(
+        wasEditing
+          ? `Đã cập nhật danh mục "${savedName}" thành công!`
+          : `Đã thêm danh mục "${savedName}" thành công!`,
+      );
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Lưu danh mục thất bại');
     } finally {
@@ -409,10 +417,17 @@ export const AdminCategoriesPage: React.FC<{
                   <button
                     type="button"
                     onClick={async () => {
-                      if (!window.confirm(`Xóa danh mục "${c.name}"?`)) return;
+                      if (
+                        !(await confirmDialog(
+                          `Bạn có chắc muốn xóa danh mục "${c.name}"?`,
+                          'Xác nhận xóa danh mục',
+                        ))
+                      )
+                        return;
                       try {
                         await categoriesApi.remove(c._id);
                         await onRefreshCatalog();
+                        alert(`Đã xóa danh mục "${c.name}" thành công!`);
                       } catch (err: unknown) {
                         alert(err instanceof Error ? err.message : 'Xóa thất bại');
                       }
@@ -459,11 +474,18 @@ export const AdminBrandsPage: React.FC<{
       } else {
         await brandsApi.create(payload);
       }
+      const savedName = name.trim();
+      const wasEditing = Boolean(editingId);
       setName('');
       setSlug('');
       setLogo('');
       setEditingId(null);
       await onRefreshCatalog();
+      alert(
+        wasEditing
+          ? `Đã cập nhật thương hiệu "${savedName}" thành công!`
+          : `Đã thêm thương hiệu "${savedName}" thành công!`,
+      );
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Lưu thương hiệu thất bại');
     } finally {
@@ -602,10 +624,17 @@ export const AdminBrandsPage: React.FC<{
                   <button
                     type="button"
                     onClick={async () => {
-                      if (!window.confirm(`Xóa thương hiệu "${b.name}"?`)) return;
+                      if (
+                        !(await confirmDialog(
+                          `Bạn có chắc muốn xóa thương hiệu "${b.name}"?`,
+                          'Xác nhận xóa thương hiệu',
+                        ))
+                      )
+                        return;
                       try {
                         await brandsApi.remove(b._id);
                         await onRefreshCatalog();
+                        alert(`Đã xóa thương hiệu "${b.name}" thành công!`);
                       } catch (err: unknown) {
                         alert(err instanceof Error ? err.message : 'Xóa thất bại');
                       }
@@ -657,10 +686,17 @@ export const AdminProductLinesPage: React.FC<{
       } else {
         await productLinesApi.create(payload);
       }
+      const savedName = name.trim();
+      const wasEditing = Boolean(editingId);
       setName('');
       setSlug('');
       setEditingId(null);
       await onRefreshCatalog();
+      alert(
+        wasEditing
+          ? `Đã cập nhật dòng sản phẩm "${savedName}" thành công!`
+          : `Đã thêm dòng sản phẩm "${savedName}" thành công!`,
+      );
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Lưu dòng sản phẩm thất bại');
     } finally {
@@ -803,10 +839,17 @@ export const AdminProductLinesPage: React.FC<{
                   <button
                     type="button"
                     onClick={async () => {
-                      if (!window.confirm(`Xóa dòng máy "${pl.name}"?`)) return;
+                      if (
+                        !(await confirmDialog(
+                          `Bạn có chắc muốn xóa dòng máy "${pl.name}"?`,
+                          'Xác nhận xóa dòng sản phẩm',
+                        ))
+                      )
+                        return;
                       try {
                         await productLinesApi.remove(pl._id);
                         await onRefreshCatalog();
+                        alert(`Đã xóa dòng sản phẩm "${pl.name}" thành công!`);
                       } catch (err: unknown) {
                         alert(err instanceof Error ? err.message : 'Xóa thất bại');
                       }

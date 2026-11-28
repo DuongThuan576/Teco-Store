@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Order, StaffOrderStatus } from '../../types/api';
-import { formatVndPrice, ordersApi } from '../../services/api';
+import { confirmDialog, formatVndPrice, ordersApi } from '../../services/api';
 
 const NEXT_STATUS_MAP: Record<
   string,
@@ -101,9 +101,10 @@ export const AdminOrdersSection: React.FC = () => {
       da_giao: 'GIAO THÀNH CÔNG',
     };
     if (
-      !window.confirm(
+      !(await confirmDialog(
         `Chuyển trạng thái đơn hàng ${ord.orderCode} sang "${statusLabels[nextStatus]}"?`,
-      )
+        'Xác nhận cập nhật trạng thái đơn hàng',
+      ))
     ) {
       return;
     }
@@ -115,6 +116,7 @@ export const AdminOrdersSection: React.FC = () => {
       if (selectedOrder?._id === ord._id) {
         setSelectedOrder(res.order);
       }
+      alert(`Đã cập nhật trạng thái đơn hàng ${ord.orderCode} sang "${statusLabels[nextStatus]}"!`);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Cập nhật trạng thái thất bại');
     } finally {

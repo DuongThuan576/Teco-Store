@@ -8,6 +8,7 @@ import {
   ProductVariant,
 } from '../../types/api';
 import {
+  confirmDialog,
   formatVndPrice,
   getPrimaryVariant,
   getProductImage,
@@ -223,6 +224,11 @@ export const AdminProductsSection: React.FC<AdminProductsSectionProps> = ({
 
       setShowProductModal(false);
       await onRefreshCatalog();
+      alert(
+        editingProduct
+          ? `Đã cập nhật sản phẩm "${name.trim()}" thành công!`
+          : `Đã thêm sản phẩm mới "${name.trim()}" thành công!`,
+      );
     } catch (err: unknown) {
       setProductFormError(err instanceof Error ? err.message : 'Lưu sản phẩm thất bại.');
     } finally {
@@ -234,18 +240,29 @@ export const AdminProductsSection: React.FC<AdminProductsSectionProps> = ({
     try {
       await productsApi.update(prod._id, { isActive: !prod.isActive });
       await onRefreshCatalog();
+      alert(
+        !prod.isActive
+          ? `Đã mở bán lại sản phẩm "${prod.name}".`
+          : `Đã tạm ẩn sản phẩm "${prod.name}".`,
+      );
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Không thể đổi trạng thái sản phẩm');
     }
   };
 
   const handleDeleteProduct = async (prod: Product) => {
-    if (!window.confirm(`Xóa vĩnh viễn sản phẩm "${prod.name}"? Hành động này không thể hoàn tác.`)) {
+    if (
+      !(await confirmDialog(
+        `Xóa vĩnh viễn sản phẩm "${prod.name}"?\nHành động này không thể hoàn tác.`,
+        'Xác nhận xóa sản phẩm',
+      ))
+    ) {
       return;
     }
     try {
       await productsApi.remove(prod._id);
       await onRefreshCatalog();
+      alert(`Đã xóa sản phẩm "${prod.name}" thành công!`);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Xóa sản phẩm thất bại');
     }
@@ -303,6 +320,7 @@ export const AdminProductsSection: React.FC<AdminProductsSectionProps> = ({
         storage: draft.storage.trim() || undefined,
       });
       await refreshManagedProduct(prod._id);
+      alert(`Đã cập nhật phiên bản SKU "${v.sku}" thành công!`);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Cập nhật biến thể thất bại');
     } finally {
@@ -320,8 +338,9 @@ export const AdminProductsSection: React.FC<AdminProductsSectionProps> = ({
 
     setAddingVariant(true);
     try {
+      const createdSku = newVarSku.trim().toUpperCase();
       await productsApi.addVariant(managingVariantsProduct._id, {
-        sku: newVarSku.trim().toUpperCase(),
+        sku: createdSku,
         color: newVarColor.trim() || undefined,
         storage: newVarStorage.trim() || undefined,
         price: Number(newVarPrice),
@@ -329,6 +348,7 @@ export const AdminProductsSection: React.FC<AdminProductsSectionProps> = ({
         ...(newVarImage.trim() ? { images: [newVarImage.trim()] } : {}),
       });
       await refreshManagedProduct(managingVariantsProduct._id);
+      alert(`Đã thêm phiên bản SKU "${createdSku}" thành công!`);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Thêm biến thể SKU thất bại');
     } finally {
@@ -338,12 +358,19 @@ export const AdminProductsSection: React.FC<AdminProductsSectionProps> = ({
 
   const handleDeleteVariant = async (prod: Product, v: ProductVariant) => {
     if (!v._id) return;
-    if (!window.confirm(`Xóa biến thể SKU "${v.sku}" khỏi sản phẩm này?`)) return;
+    if (
+      !(await confirmDialog(
+        `Xóa biến thể SKU "${v.sku}" khỏi sản phẩm "${prod.name}"?`,
+        'Xác nhận xóa biến thể SKU',
+      ))
+    )
+      return;
 
     setSavingVariantId(v._id);
     try {
       await productsApi.removeVariant(prod._id, v._id);
       await refreshManagedProduct(prod._id);
+      alert(`Đã xóa phiên bản SKU "${v.sku}" thành công!`);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Xóa biến thể thất bại');
     } finally {

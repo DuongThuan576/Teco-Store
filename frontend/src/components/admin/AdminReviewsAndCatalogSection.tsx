@@ -9,6 +9,7 @@ import {
 import {
   brandsApi,
   categoriesApi,
+  confirmDialog,
   productLinesApi,
   reviewsApi,
 } from '../../services/api';
@@ -29,8 +30,8 @@ export const AdminReviewsModerationSection: React.FC<AdminReviewsProps> = ({ pro
   const [editingReplyText, setEditingReplyText] = useState<string>('');
   const [savingReplyId, setSavingReplyId] = useState<string | null>(null);
 
-  const loadReviews = useCallback(async () => {
-    setLoading(true);
+  const loadReviews = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const list = await reviewsApi.getReviewsForModeration();
@@ -69,7 +70,7 @@ export const AdminReviewsModerationSection: React.FC<AdminReviewsProps> = ({ pro
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Không thể tải danh sách đánh giá');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -80,7 +81,8 @@ export const AdminReviewsModerationSection: React.FC<AdminReviewsProps> = ({ pro
   const handleToggleHidden = async (rev: Review) => {
     try {
       await reviewsApi.moderateReview(rev._id, !rev.isHidden);
-      await loadReviews();
+      await loadReviews(true);
+      alert(!rev.isHidden ? 'Đã ẩn đánh giá sản phẩm!' : 'Đã hiển thị lại đánh giá sản phẩm!');
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Cập nhật kiểm duyệt thất bại');
     }
@@ -93,8 +95,8 @@ export const AdminReviewsModerationSection: React.FC<AdminReviewsProps> = ({ pro
       await reviewsApi.replyToReview(reviewId, replyText.trim());
       setReplyingId(null);
       setReplyText('');
+      await loadReviews(true);
       alert('Đã gửi phản hồi chính thức của TecoStore thành công!');
-      await loadReviews();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Gửi phản hồi thất bại');
     } finally {
@@ -109,7 +111,8 @@ export const AdminReviewsModerationSection: React.FC<AdminReviewsProps> = ({ pro
       await reviewsApi.updateReview(replyId, { comment: editingReplyText.trim() });
       setEditingReplyId(null);
       setEditingReplyText('');
-      await loadReviews();
+      await loadReviews(true);
+      alert('Đã cập nhật nội dung phản hồi thành công!');
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Cập nhật phản hồi thất bại');
     } finally {
@@ -118,11 +121,18 @@ export const AdminReviewsModerationSection: React.FC<AdminReviewsProps> = ({ pro
   };
 
   const handleDeleteReply = async (replyId: string) => {
-    if (!window.confirm('Bạn có chắc muốn xóa phản hồi này?')) return;
+    if (
+      !(await confirmDialog(
+        'Bạn có chắc muốn xóa phản hồi này khỏi đánh giá?',
+        'Xác nhận xóa phản hồi',
+      ))
+    )
+      return;
     setSavingReplyId(replyId);
     try {
       await reviewsApi.deleteReview(replyId);
-      await loadReviews();
+      await loadReviews(true);
+      alert('Đã xóa phản hồi thành công!');
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Xóa phản hồi thất bại');
     } finally {
@@ -369,10 +379,11 @@ export const AdminCatalogSection: React.FC<AdminCatalogProps> = ({
   };
 
   const handleDeleteCategory = async (c: Category) => {
-    if (!window.confirm(`Xóa danh mục "${c.name}"?`)) return;
+    if (!(await confirmDialog(`Xóa danh mục "${c.name}"?`, 'Xác nhận xóa danh mục'))) return;
     try {
       await categoriesApi.remove(c._id);
       await onRefreshCatalog();
+      alert(`Đã xóa danh mục "${c.name}" thành công!`);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Xóa danh mục thất bại');
     }
@@ -382,8 +393,9 @@ export const AdminCatalogSection: React.FC<AdminCatalogProps> = ({
     e.preventDefault();
     if (!brandName.trim()) return;
     try {
+      const saved = brandName.trim();
       await brandsApi.create({
-        name: brandName.trim(),
+        name: saved,
         slug: slugifyVi(brandName),
         ...(brandLogo.trim() ? { logo: brandLogo.trim() } : {}),
         status: 'active',
@@ -391,16 +403,19 @@ export const AdminCatalogSection: React.FC<AdminCatalogProps> = ({
       setBrandName('');
       setBrandLogo('');
       await onRefreshCatalog();
+      alert(`Đã thêm thương hiệu "${saved}" thành công!`);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Thêm thương hiệu thất bại');
     }
   };
 
   const handleDeleteBrand = async (b: Brand) => {
-    if (!window.confirm(`Xóa thương hiệu "${b.name}"?`)) return;
+    if (!(await confirmDialog(`Xóa thương hiệu "${b.name}"?`, 'Xác nhận xóa thương hiệu')))
+      return;
     try {
       await brandsApi.remove(b._id);
       await onRefreshCatalog();
+      alert(`Đã xóa thương hiệu "${b.name}" thành công!`);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Xóa thương hiệu thất bại');
     }
@@ -412,8 +427,9 @@ export const AdminCatalogSection: React.FC<AdminCatalogProps> = ({
     const targetCat = lineCatId || categories[0]?._id;
     if (!lineName.trim() || !targetBrand || !targetCat) return;
     try {
+      const saved = lineName.trim();
       await productLinesApi.create({
-        name: lineName.trim(),
+        name: saved,
         slug: slugifyVi(lineName),
         brandId: targetBrand,
         categoryId: targetCat,
@@ -421,16 +437,24 @@ export const AdminCatalogSection: React.FC<AdminCatalogProps> = ({
       });
       setLineName('');
       await onRefreshCatalog();
+      alert(`Đã thêm dòng sản phẩm "${saved}" thành công!`);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Thêm dòng sản phẩm thất bại');
     }
   };
 
   const handleDeleteProductLine = async (pl: ProductLine) => {
-    if (!window.confirm(`Xóa dòng sản phẩm "${pl.name}"?`)) return;
+    if (
+      !(await confirmDialog(
+        `Xóa dòng sản phẩm "${pl.name}"?`,
+        'Xác nhận xóa dòng sản phẩm',
+      ))
+    )
+      return;
     try {
       await productLinesApi.remove(pl._id);
       await onRefreshCatalog();
+      alert(`Đã xóa dòng sản phẩm "${pl.name}" thành công!`);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Xóa dòng sản phẩm thất bại');
     }

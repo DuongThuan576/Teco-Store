@@ -1156,14 +1156,14 @@ export const CartPage: React.FC<CartPageProps> = ({
                   <div className="flex-1">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <span className="font-bold text-xs sm:text-sm text-text-primary">
-                        Thanh toán trực tuyến qua Cổng VNPay (VNPay-QR / Thẻ ATM / Visa)
+                        Thanh toán trực tuyến qua Cổng VNPay
                       </span>
                       <span className="px-2.5 py-0.5 rounded bg-blue-600 text-white font-extrabold text-[10px] tracking-wide">
-                        VNPAY GATEWAY
+                        VNPAY
                       </span>
                     </div>
                     <span className="text-[11px] text-text-secondary mt-0.5 block">
-                      Chuyển hướng an toàn tới cổng VNPay (chữ ký số HMAC-SHA512), hỗ trợ quét QR ngân hàng &amp; thẻ nội địa/quốc tế.
+                      Chuyển hướng an toàn tới cổng VNPay, hỗ trợ quét QR ngân hàng &amp; thẻ nội địa/quốc tế.
                     </span>
                     {paymentMethod === 'vnpay' && (
                       <div className="mt-3 p-3 bg-blue-50/90 border border-blue-200 rounded-xl text-[11px] text-blue-900 space-y-1">

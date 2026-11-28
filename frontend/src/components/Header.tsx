@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Category, Product, User } from '../types/api';
+import { authApi } from '../services/api';
 
 interface HeaderProps {
   categories: Category[];
@@ -9,6 +10,7 @@ interface HeaderProps {
   onSearchChange: (q: string) => void;
   cartCount: number;
   currentUser?: User | null;
+  onLogout?: () => void;
 }
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -25,8 +27,23 @@ export const Header: React.FC<HeaderProps> = ({
   onSearchChange,
   cartCount,
   currentUser,
+  onLogout,
 }) => {
   const navigate = useNavigate();
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const handleHeaderLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await authApi.logout();
+    } catch {
+      // Ignore network errors
+    } finally {
+      setLoggingOut(false);
+      onLogout?.();
+      navigate('/login');
+    }
+  };
 
   // Parent categories from backend (excluding test categories)
   const parentCategories = categories.filter(
@@ -157,46 +174,150 @@ export const Header: React.FC<HeaderProps> = ({
               {(currentUser?.role === 'admin' ||
                 currentUser?.role === 'employee' ||
                 currentUser?.role === 'staff') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigate('/admin');
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 transition-all cursor-pointer font-bold text-xs"
+                  >
+                    <span className="material-symbols-outlined text-[20px] text-amber-600">
+                      admin_panel_settings
+                    </span>
+                    <span className="hidden lg:inline">Quản trị</span>
+                  </button>
+                )}
+              <div className="relative group/user">
                 <button
                   type="button"
                   onClick={() => {
-                    navigate('/admin');
+                    if (currentUser) {
+                      navigate('/account', { state: { tab: 'profile' } });
+                    } else {
+                      navigate('/login');
+                    }
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 transition-all cursor-pointer font-bold text-xs"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-text-secondary hover:bg-surface-container-low hover:text-primary transition-all cursor-pointer text-left"
                 >
-                  <span className="material-symbols-outlined text-[20px] text-amber-600">
-                    admin_panel_settings
+                  <span className="material-symbols-outlined text-[24px] text-primary">
+                    account_circle
                   </span>
-                  <span className="hidden lg:inline">Quản trị</span>
+                  <div className="text-left leading-tight hidden sm:block max-w-[120px]">
+                    <span className="text-[10px] text-text-secondary block truncate">
+                      {currentUser ? 'Xin chào,' : 'Tài khoản'}
+                    </span>
+                    <span className="text-body-sm font-body-strong text-text-primary flex items-center gap-0.5">
+                      <span className="truncate">
+                        {currentUser
+                          ? currentUser.fullName || currentUser.fullname || 'Thành viên'
+                          : 'Đăng nhập'}
+                      </span>
+                      {currentUser && (
+                        <span className="material-symbols-outlined text-[15px] text-text-secondary shrink-0">
+                          expand_more
+                        </span>
+                      )}
+                    </span>
+                  </div>
                 </button>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  if (currentUser) {
-                    navigate('/account');
-                  } else {
-                    navigate('/login');
-                  }
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-text-secondary hover:bg-surface-container-low hover:text-primary transition-all cursor-pointer text-left"
-              >
-                <span className="material-symbols-outlined text-[24px] text-primary">
-                  account_circle
-                </span>
-                <div className="text-left leading-tight hidden sm:block max-w-[110px]">
-                  <span className="text-[10px] text-text-secondary block truncate">
-                    {currentUser ? 'Xin chào,' : 'Tài khoản'}
-                  </span>
-                  <span className="text-body-sm font-body-strong text-text-primary block truncate">
-                    {currentUser
-                      ? currentUser.fullName || currentUser.fullname || 'Thành viên'
-                      : 'Đăng nhập'}
-                  </span>
-                </div>
-              </button>
+
+                {currentUser && (
+                  <div className="invisible opacity-0 group-hover/user:visible group-hover/user:opacity-100 transition-all duration-150 absolute right-0 top-full pt-1.5 z-50 w-60">
+                    <div className="bg-white border border-border-subtle rounded-2xl shadow-xl p-2 text-xs space-y-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigate('/account', { state: { tab: 'profile' } });
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        className="w-full px-3 py-2.5 rounded-xl bg-slate-50 hover:bg-blue-50/70 text-left transition-colors cursor-pointer block border-b border-border-subtle/60"
+                      >
+                        <span className="font-extrabold text-text-primary block truncate">
+                          {currentUser.fullName || currentUser.fullname || 'Thành viên'}
+                        </span>
+                        <span className="text-[11px] text-primary font-semibold flex items-center justify-between mt-0.5">
+                          <span>Quản lý tài khoản</span>
+                          <span className="material-symbols-outlined text-[14px]">
+                            arrow_forward
+                          </span>
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigate('/account', { state: { tab: 'profile' } });
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        className="w-full px-3 py-2.5 rounded-xl hover:bg-blue-50 text-text-primary hover:text-primary font-semibold flex items-center gap-2.5 transition-colors cursor-pointer text-left"
+                      >
+                        <span className="material-symbols-outlined text-[18px] text-primary">
+                          person
+                        </span>
+                        <span>Hồ sơ &amp; Đổi mật khẩu</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigate('/account', { state: { tab: 'addresses' } });
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        className="w-full px-3 py-2.5 rounded-xl hover:bg-blue-50 text-text-primary hover:text-primary font-semibold flex items-center gap-2.5 transition-colors cursor-pointer text-left"
+                      >
+                        <span className="material-symbols-outlined text-[18px] text-primary">
+                          location_on
+                        </span>
+                        <span>Sổ địa chỉ nhận hàng</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigate('/account', { state: { tab: 'orders' } });
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        className="w-full px-3 py-2.5 rounded-xl hover:bg-blue-50 text-text-primary hover:text-primary font-semibold flex items-center gap-2.5 transition-colors cursor-pointer text-left"
+                      >
+                        <span className="material-symbols-outlined text-[18px] text-primary">
+                          receipt_long
+                        </span>
+                        <span>Lịch sử đơn hàng</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigate('/account', { state: { tab: 'vouchers' } });
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        className="w-full px-3 py-2.5 rounded-xl hover:bg-blue-50 text-text-primary hover:text-primary font-semibold flex items-center gap-2.5 transition-colors cursor-pointer text-left"
+                      >
+                        <span className="material-symbols-outlined text-[18px] text-primary">
+                          confirmation_number
+                        </span>
+                        <span>Kho Voucher</span>
+                      </button>
+
+                      <div className="pt-1 mt-1 border-t border-border-subtle/70">
+                        <button
+                          type="button"
+                          disabled={loggingOut}
+                          onClick={() => void handleHeaderLogout()}
+                          className="w-full px-3 py-2.5 rounded-xl hover:bg-red-50 text-badge-discount font-bold flex items-center gap-2.5 transition-colors cursor-pointer text-left disabled:opacity-50"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">
+                            logout
+                          </span>
+                          <span>{loggingOut ? 'Đang đăng xuất...' : 'Đăng xuất'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => {
@@ -217,18 +338,18 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Navigation Links Strip - Clicks navigate directly via react-router */}
-          <nav className="flex items-center space-x-7 pt-2 mt-1 border-t border-border-subtle/60 overflow-x-auto no-scrollbar text-body-strong">
-            {/* Trang chủ */}
+          <nav className="flex items-center space-x-7 pt-2.5 pb-1.5 mt-1 border-t border-border-subtle/60 overflow-x-auto thin-scrollbar text-body-strong">
+            {/* Tất cả sản phẩm */}
             <button
               type="button"
               onClick={() => {
-                navigate('/');
+                navigate('/category/all');
                 window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
-              className="text-text-secondary hover:text-primary pb-1 flex items-center gap-1 whitespace-nowrap transition-colors duration-150 cursor-pointer"
+              className="h-8 text-text-secondary hover:text-primary inline-flex items-center justify-center gap-1.5 leading-none whitespace-nowrap transition-colors duration-150 cursor-pointer"
             >
               <span className="material-symbols-outlined text-[18px]">grid_view</span>
-              Sản phẩm nổi bật
+              <span>Tất cả sản phẩm</span>
             </button>
 
             {/* Category Pages: Điện thoại, Laptop, Phụ kiện */}
@@ -243,19 +364,16 @@ export const Header: React.FC<HeaderProps> = ({
                     navigate(`/category/${cat.slug}`);
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
-                  className="text-text-secondary hover:text-primary pb-1 flex items-center gap-1 whitespace-nowrap transition-colors duration-150 cursor-pointer"
+                  className="h-8 text-text-secondary hover:text-primary inline-flex items-center justify-center gap-1.5 leading-none whitespace-nowrap transition-colors duration-150 cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-[18px]">
                     {iconName}
                   </span>
-                  {cat.name}
+                  <span>{cat.name}</span>
                 </button>
               );
             })}
 
-            <div className="ml-auto hidden xl:flex items-center text-xs font-semibold text-badge-discount bg-red-50 border border-red-200 px-2.5 py-0.5 rounded">
-              <span>Thu cũ đổi mới: Trợ giá ngay 2.000.000₫</span>
-            </div>
           </nav>
         </div>
       </header>

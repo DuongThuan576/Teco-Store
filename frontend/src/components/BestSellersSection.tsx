@@ -22,6 +22,9 @@ interface BestSellersSectionProps {
   searchQuery: string;
   onClearFilters: () => void;
   onSelectProduct: (product: Product) => void;
+  onAddToCart?: (product: Product, isBuyNow?: boolean) => void;
+  compareIds?: string[];
+  onToggleCompare?: (product: Product) => void;
 }
 
 export const BestSellersSection: React.FC<BestSellersSectionProps> = ({
@@ -37,6 +40,9 @@ export const BestSellersSection: React.FC<BestSellersSectionProps> = ({
   searchQuery,
   onClearFilters,
   onSelectProduct,
+  onAddToCart,
+  compareIds = [],
+  onToggleCompare,
 }) => {
   const navigate = useNavigate();
   const [showInactive, setShowInactive] = useState(false);
@@ -83,22 +89,20 @@ export const BestSellersSection: React.FC<BestSellersSectionProps> = ({
       id="products-section"
       className="max-w-[1240px] mx-auto px-4 sm:px-margin-desktop py-space-lg"
     >
-      <div className="flex flex-col md:flex-row md:items-end justify-between mb-4 gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-6 bg-primary rounded-full" />
-            <h2 className="text-headline-lg font-headline-lg text-text-primary">
-              Sản phẩm nổi bật &amp; Bán chạy
-            </h2>
-          </div>
+      <div className="flex flex-col items-start mb-4 gap-3">
+        <div className="flex items-center gap-2">
+          <span className="w-2.5 h-6 bg-primary rounded-full shrink-0" />
+          <h2 className="text-headline-lg font-headline-lg text-text-primary">
+            Sản phẩm nổi bật &amp; Bán chạy
+          </h2>
         </div>
 
         {/* Tab Buttons */}
-        <div className="flex items-center space-x-1.5 overflow-x-auto no-scrollbar p-1 bg-white border border-border-subtle rounded-xl shadow-sm text-xs font-semibold">
+        <div className="w-full flex items-center space-x-1.5 overflow-x-auto thin-scrollbar px-2 pt-2 pb-1 bg-white border border-border-subtle rounded-xl shadow-sm text-xs font-semibold">
           <button
             type="button"
             onClick={() => onSelectCategory(null)}
-            className={`px-3.5 py-1.5 rounded-lg whitespace-nowrap transition-colors ${
+            className={`h-8 px-3.5 rounded-lg inline-flex items-center justify-center leading-none whitespace-nowrap transition-colors cursor-pointer ${
               selectedCategoryId === null
                 ? 'bg-primary text-white shadow-sm'
                 : 'text-text-secondary hover:text-primary hover:bg-surface-page'
@@ -111,7 +115,7 @@ export const BestSellersSection: React.FC<BestSellersSectionProps> = ({
               key={cat._id}
               type="button"
               onClick={() => onSelectCategory(cat._id)}
-              className={`px-3.5 py-1.5 rounded-lg whitespace-nowrap transition-colors ${
+              className={`h-8 px-3.5 rounded-lg inline-flex items-center justify-center leading-none whitespace-nowrap transition-colors cursor-pointer ${
                 selectedCategoryId === cat._id
                   ? 'bg-primary text-white shadow-sm'
                   : 'text-text-secondary hover:text-primary hover:bg-surface-page'
@@ -207,6 +211,7 @@ export const BestSellersSection: React.FC<BestSellersSectionProps> = ({
             const imageUrl = getProductImage(product, index);
             const price = primaryVariant?.price;
             const brand = brands.find((b) => b._id === product.brandId);
+            const isCompared = compareIds.includes(product._id);
 
             return (
               <div
@@ -216,6 +221,26 @@ export const BestSellersSection: React.FC<BestSellersSectionProps> = ({
               >
                 <div>
                   <div className="relative aspect-square w-full rounded-lg bg-surface-page overflow-hidden mb-3 p-3 flex items-center justify-center">
+                    {onToggleCompare && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleCompare(product);
+                        }}
+                        className={`absolute top-2 left-2 z-10 px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs ${
+                          isCompared
+                            ? 'bg-primary text-white'
+                            : 'bg-white/90 hover:bg-primary hover:text-white text-slate-700 border border-border-subtle'
+                        }`}
+                        title="Thêm vào bảng so sánh sản phẩm"
+                      >
+                        <span className="material-symbols-outlined text-[13px]">
+                          compare_arrows
+                        </span>
+                        <span>{isCompared ? 'Đã chọn' : 'So sánh'}</span>
+                      </button>
+                    )}
                     {!product.isActive && (
                       <span className="absolute top-2 right-2 z-10 bg-slate-700 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
                         Ẩn / Test
@@ -262,23 +287,17 @@ export const BestSellersSection: React.FC<BestSellersSectionProps> = ({
                   )}
                 </div>
 
-                <div className="pt-3">
-                  <div className="flex items-baseline gap-2 flex-wrap">
+                <div className="pt-3 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
                     <span className="text-price-lg font-price-lg text-badge-discount">
                       {formatVndPrice(price)}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs text-text-secondary mt-2 pt-2 border-t border-border-subtle/60">
-                    <span className="text-[11px] text-slate-500 font-medium">
-                      {product.variants?.length || 1} biến thể
                     </span>
                     {totalStock > 0 ? (
                       <span className="text-emerald-600 font-semibold text-[11px] flex items-center gap-0.5">
                         <span className="material-symbols-outlined text-[13px]">
                           check_circle
                         </span>
-                        Sẵn hàng 
+                        Sẵn hàng
                       </span>
                     ) : (
                       <span className="text-red-500 font-semibold text-[11px]">
@@ -286,6 +305,36 @@ export const BestSellersSection: React.FC<BestSellersSectionProps> = ({
                       </span>
                     )}
                   </div>
+
+                  {onAddToCart && (
+                    <div className="flex flex-col gap-1.5 pt-2 border-t border-border-subtle/60">
+                      <button
+                        type="button"
+                        disabled={totalStock <= 0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAddToCart(product, true);
+                        }}
+                        className="w-full py-2 px-3 rounded-lg bg-badge-discount hover:bg-red-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer shadow-2xs disabled:opacity-40"
+                      >
+                        <span>Mua ngay</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={totalStock <= 0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAddToCart(product, false);
+                        }}
+                        className="w-full py-2 px-3 rounded-lg bg-white border border-primary text-primary hover:bg-blue-50 text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer shadow-2xs disabled:opacity-40"
+                      >
+                        <span className="material-symbols-outlined text-[15px]">
+                          add_shopping_cart
+                        </span>
+                        <span>Thêm vào giỏ</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             );

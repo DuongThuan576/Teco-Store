@@ -129,6 +129,46 @@ export interface AuthResponse {
   user: User;
 }
 
+export interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface AdminUserItem {
+  id: string;
+  fullName: string;
+  email: string;
+  phone?: string;
+  role: UserRole;
+  status: 'active' | 'inactive' | string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PaginatedUsersResponse {
+  data: AdminUserItem[];
+  pagination: PaginationMeta;
+}
+
+export type AuthSessionStatus = 'active' | 'revoked' | 'expired';
+
+export interface AuthSessionItem {
+  id: string;
+  userId: string;
+  status: AuthSessionStatus;
+  createdAt: string;
+  updatedAt?: string;
+  expiresAt: string;
+  revokedAt?: string | null;
+}
+
+export interface PaginatedSessionsResponse {
+  data: AuthSessionItem[];
+  pagination: PaginationMeta;
+}
+
 export interface BackendCartItem {
   productId: string;
   variantId?: string;

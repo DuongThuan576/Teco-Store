@@ -4,7 +4,6 @@ import { Brand, Category, Product } from '../types/api';
 import { HeroSection } from '../components/HeroSection';
 import { BestSellersSection } from '../components/BestSellersSection';
 import { BrandsShowcase } from '../components/BrandsShowcase';
-import { TechNewsSection } from '../components/TechNewsSection';
 
 interface HomePageProps {
   categories: Category[];
@@ -15,6 +14,9 @@ interface HomePageProps {
   searchQuery: string;
   onClearFilters: () => void;
   onSelectProduct: (product: Product) => void;
+  onAddToCart?: (product: Product, isBuyNow?: boolean) => void;
+  compareIds?: string[];
+  onToggleCompare?: (product: Product) => void;
 }
 
 export const HomePage: React.FC<HomePageProps> = ({
@@ -25,6 +27,9 @@ export const HomePage: React.FC<HomePageProps> = ({
   error,
   searchQuery,
   onClearFilters,
+  onAddToCart,
+  compareIds = [],
+  onToggleCompare,
 }) => {
   const navigate = useNavigate();
 
@@ -76,6 +81,9 @@ export const HomePage: React.FC<HomePageProps> = ({
           navigate(`/product/${product.slug}`);
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
+        onAddToCart={onAddToCart}
+        compareIds={compareIds}
+        onToggleCompare={onToggleCompare}
       />
 
       {/* Official Brands Showcase */}
@@ -89,9 +97,6 @@ export const HomePage: React.FC<HomePageProps> = ({
           }
         }}
       />
-
-      {/* Tech News & Store Locator Banner (Section 5) */}
-      <TechNewsSection />
     </>
   );
 };

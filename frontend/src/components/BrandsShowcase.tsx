@@ -29,10 +29,6 @@ export const BrandsShowcase: React.FC<BrandsShowcaseProps> = ({
               Cam kết nguồn gốc xuất xứ 100% chính hãng
             </p>
           </div>
-          <span className="text-xs font-semibold text-emerald-600 items-center gap-1 hidden sm:flex">
-            <span className="material-symbols-outlined text-[16px]">verified</span>
-            Đại lý ủy quyền cấp 1
-          </span>
         </div>
 
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-8 gap-3">

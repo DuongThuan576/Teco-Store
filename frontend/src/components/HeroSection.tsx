@@ -294,9 +294,9 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
         </div>
       </div>
 
-      {/* 4 Value Guarantees Strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 pt-2">
-        <div className="bg-white rounded-lg border border-border-subtle p-3 flex items-center gap-3">
+      {/* 3 Value Guarantees Strip */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-2">
+        <div className="bg-white rounded-lg border border-border-subtle p-3.5 flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-blue-50 text-primary flex items-center justify-center flex-shrink-0">
             <span className="material-symbols-outlined text-[22px]">
               verified_user
@@ -311,20 +311,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             </p>
           </div>
         </div>
-        <div className="bg-white rounded-lg border border-border-subtle p-3 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-emerald-50 text-success-emerald flex items-center justify-center flex-shrink-0">
-            <span className="material-symbols-outlined text-[22px]">autorenew</span>
-          </div>
-          <div>
-            <h4 className="text-body-sm font-body-strong text-text-primary">
-              Bảo hành 1 đổi 1 trong 12 tháng
-            </h4>
-            <p className="text-[11px] text-text-secondary">
-              Lỗi phần cứng đổi máy mới ngay
-            </p>
-          </div>
-        </div>
-        <div className="bg-white rounded-lg border border-border-subtle p-3 flex items-center gap-3">
+        <div className="bg-white rounded-lg border border-border-subtle p-3.5 flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
             <span className="material-symbols-outlined text-[22px]">bolt</span>
           </div>
@@ -337,7 +324,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             </p>
           </div>
         </div>
-        <div className="bg-white rounded-lg border border-border-subtle p-3 flex items-center gap-3">
+        <div className="bg-white rounded-lg border border-border-subtle p-3.5 flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0">
             <span className="material-symbols-outlined text-[22px]">
               credit_card
