@@ -63,7 +63,51 @@ export function getAccessToken(): string | null {
   return accessTokenMemory;
 }
 
-async function fetchJson<T>(endpoint: string, init?: RequestInit): Promise<T> {
+let refreshPromise: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+        });
+        if (!res.ok) {
+          setAccessToken(null);
+          return null;
+        }
+        const data = (await res.json()) as Partial<AuthResponse>;
+        if (data.accessToken) {
+          setAccessToken(data.accessToken);
+          return data.accessToken;
+        }
+        setAccessToken(null);
+        return null;
+      } catch {
+        setAccessToken(null);
+        return null;
+      } finally {
+        refreshPromise = null;
+      }
+    })();
+  }
+  return refreshPromise;
+}
+
+const AUTH_SKIP_REFRESH_ENDPOINTS = new Set([
+  '/auth/login',
+  '/auth/register',
+  '/auth/refresh',
+  '/auth/logout',
+]);
+
+async function fetchJson<T>(
+  endpoint: string,
+  init?: RequestInit,
+  hasRetried = false,
+): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(init?.headers as Record<string, string>),
@@ -78,6 +122,17 @@ async function fetchJson<T>(endpoint: string, init?: RequestInit): Promise<T> {
     headers,
     credentials: init?.credentials ?? 'include',
   });
+
+  if (
+    response.status === 401 &&
+    !hasRetried &&
+    !AUTH_SKIP_REFRESH_ENDPOINTS.has(endpoint)
+  ) {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      return fetchJson<T>(endpoint, init, true);
+    }
+  }
 
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));

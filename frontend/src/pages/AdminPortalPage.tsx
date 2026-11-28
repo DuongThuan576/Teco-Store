@@ -474,7 +474,7 @@ export const AdminPortalPage: React.FC<AdminPortalPageProps> = ({
                   {currentUser.fullName || currentUser.fullname || 'Quản trị viên'}
                 </span>
                 <span className="text-[10px] font-semibold text-slate-400 block">
-                  {isAdmin ? 'Super Admin' : 'Staff Operations'}
+                  {isAdmin ? 'Admin' : 'Staff Operations'}
                 </span>
               </div>
             </button>

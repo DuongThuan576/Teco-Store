@@ -25,13 +25,47 @@ export const AdminReviewsModerationSection: React.FC<AdminReviewsProps> = ({ pro
   const [replyingId, setReplyingId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState<string>('');
   const [submittingReply, setSubmittingReply] = useState<boolean>(false);
+  const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
+  const [editingReplyText, setEditingReplyText] = useState<string>('');
+  const [savingReplyId, setSavingReplyId] = useState<string | null>(null);
 
   const loadReviews = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const list = await reviewsApi.getReviewsForModeration();
-      setReviews(Array.isArray(list) ? list : []);
+      const baseReviews = Array.isArray(list) ? list : [];
+
+      const uniqueProductIds = Array.from(
+        new Set(baseReviews.map((rev) => String(rev.productId)).filter(Boolean)),
+      );
+
+      if (uniqueProductIds.length === 0) {
+        setReviews(baseReviews);
+        return;
+      }
+
+      const productReviewsResults = await Promise.allSettled(
+        uniqueProductIds.map((productId) => reviewsApi.getProductReviews(productId)),
+      );
+
+      const repliesByReviewId = new Map<string, Review['replies']>();
+      for (const result of productReviewsResults) {
+        if (result.status === 'fulfilled') {
+          for (const item of result.value.reviews) {
+            if (item.replies && item.replies.length > 0) {
+              repliesByReviewId.set(String(item._id), item.replies);
+            }
+          }
+        }
+      }
+
+      setReviews(
+        baseReviews.map((rev) => ({
+          ...rev,
+          replies: rev.replies?.length ? rev.replies : repliesByReviewId.get(String(rev._id)) ?? [],
+        })),
+      );
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Không thể tải danh sách đánh giá');
     } finally {
@@ -65,6 +99,34 @@ export const AdminReviewsModerationSection: React.FC<AdminReviewsProps> = ({ pro
       alert(err instanceof Error ? err.message : 'Gửi phản hồi thất bại');
     } finally {
       setSubmittingReply(false);
+    }
+  };
+
+  const handleUpdateReply = async (replyId: string) => {
+    if (!editingReplyText.trim()) return;
+    setSavingReplyId(replyId);
+    try {
+      await reviewsApi.updateReview(replyId, { comment: editingReplyText.trim() });
+      setEditingReplyId(null);
+      setEditingReplyText('');
+      await loadReviews();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Cập nhật phản hồi thất bại');
+    } finally {
+      setSavingReplyId(null);
+    }
+  };
+
+  const handleDeleteReply = async (replyId: string) => {
+    if (!window.confirm('Bạn có chắc muốn xóa phản hồi này?')) return;
+    setSavingReplyId(replyId);
+    try {
+      await reviewsApi.deleteReview(replyId);
+      await loadReviews();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Xóa phản hồi thất bại');
+    } finally {
+      setSavingReplyId(null);
     }
   };
 
@@ -165,6 +227,76 @@ export const AdminReviewsModerationSection: React.FC<AdminReviewsProps> = ({ pro
                 </div>
 
                 <p className="text-slate-700 leading-relaxed">{rev.comment}</p>
+
+                {rev.replies && rev.replies.length > 0 && (
+                  <div className="pl-3.5 border-l-2 border-primary/30 space-y-2 pt-1">
+                    {rev.replies.map((reply) => {
+                      const isEditing = editingReplyId === reply._id;
+                      const isBusy = savingReplyId === reply._id;
+                      return (
+                        <div
+                          key={reply._id}
+                          className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-100 space-y-1.5"
+                        >
+                          <div className="flex items-center justify-between gap-2 text-[11px]">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-primary">Phản hồi từ TecoStore</span>
+                              {reply.createdAt && (
+                                <span className="text-text-secondary">
+                                  • {new Date(reply.createdAt).toLocaleString('vi-VN')}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => {
+                                  setEditingReplyId(isEditing ? null : reply._id);
+                                  setEditingReplyText(reply.comment);
+                                }}
+                                className="px-2 py-0.5 rounded-md bg-white border border-blue-200 text-primary font-bold hover:bg-blue-100 cursor-pointer disabled:opacity-50"
+                              >
+                                {isEditing ? 'Hủy' : 'Sửa'}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => void handleDeleteReply(reply._id)}
+                                className="px-2 py-0.5 rounded-md bg-white border border-red-200 text-badge-discount font-bold hover:bg-red-50 cursor-pointer disabled:opacity-50"
+                              >
+                                {isBusy && !isEditing ? 'Đang xóa...' : 'Xóa'}
+                              </button>
+                            </div>
+                          </div>
+
+                          {isEditing ? (
+                            <div className="flex gap-2 pt-1">
+                              <input
+                                type="text"
+                                value={editingReplyText}
+                                onChange={(e) => setEditingReplyText(e.target.value)}
+                                placeholder="Nhập nội dung phản hồi mới..."
+                                className="flex-1 h-8 px-2.5 rounded-lg border border-blue-200 bg-white focus:outline-none focus:border-primary"
+                              />
+                              <button
+                                type="button"
+                                disabled={isBusy || !editingReplyText.trim()}
+                                onClick={() => void handleUpdateReply(reply._id)}
+                                className="px-3 h-8 rounded-lg bg-primary text-white font-bold cursor-pointer disabled:opacity-50"
+                              >
+                                {isBusy ? 'Đang lưu...' : 'Lưu'}
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="text-slate-700 leading-relaxed">{reply.comment}</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {replyingId === rev._id && (
                   <div className="pt-2 flex gap-2">

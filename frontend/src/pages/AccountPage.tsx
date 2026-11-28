@@ -8,8 +8,9 @@ import {
   paymentsApi,
   setAccessToken,
   usersApi,
+  vouchersApi,
 } from '../services/api';
-import { Address, CreateAddressDTO, Order, Product, User } from '../types/api';
+import { Address, CreateAddressDTO, Order, Product, User, Voucher } from '../types/api';
 
 interface AccountPageProps {
   currentUser: User | null;
@@ -18,7 +19,7 @@ interface AccountPageProps {
   onLogoutSuccess: (customMessage?: string) => void;
 }
 
-type AccountTab = 'profile' | 'addresses' | 'orders';
+type AccountTab = 'profile' | 'addresses' | 'orders' | 'vouchers';
 
 const EMPTY_ADDRESS_FORM: CreateAddressDTO = {
   receiverName: '',
@@ -40,7 +41,9 @@ export const AccountPage: React.FC<AccountPageProps> = ({
 
   const requestedTab = (location.state as { tab?: AccountTab } | null)?.tab;
   const [activeTab, setActiveTab] = useState<AccountTab>(
-    requestedTab === 'orders' || requestedTab === 'addresses' ? requestedTab : 'profile',
+    requestedTab === 'orders' || requestedTab === 'addresses' || requestedTab === 'vouchers'
+      ? requestedTab
+      : 'profile',
   );
   const [loadingLogout, setLoadingLogout] = useState(false);
 
@@ -75,6 +78,12 @@ export const AccountPage: React.FC<AccountPageProps> = ({
   const [addressForm, setAddressForm] = useState<CreateAddressDTO>(EMPTY_ADDRESS_FORM);
   const [savingAddress, setSavingAddress] = useState<boolean>(false);
   const [busyAddressId, setBusyAddressId] = useState<string | null>(null);
+
+  // ================= TAB 4: VOUCHER WALLET STATE =================
+  const [vouchers, setVouchers] = useState<Voucher[]>([]);
+  const [loadingVouchers, setLoadingVouchers] = useState<boolean>(false);
+  const [voucherError, setVoucherError] = useState<string | null>(null);
+  const [copiedVoucherCode, setCopiedVoucherCode] = useState<string | null>(null);
 
   // ================= TAB 3: ORDERS & DETAIL MODAL STATE =================
   const [orders, setOrders] = useState<Order[]>([]);
@@ -141,14 +150,29 @@ export const AccountPage: React.FC<AccountPageProps> = ({
     }
   }, []);
 
+  const loadVouchers = useCallback(async () => {
+    setLoadingVouchers(true);
+    setVoucherError(null);
+    try {
+      const res = await vouchersApi.getMyWallet();
+      setVouchers(res.vouchers || []);
+    } catch (err: unknown) {
+      setVoucherError(err instanceof Error ? err.message : 'Không thể tải danh sách voucher');
+    } finally {
+      setLoadingVouchers(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!currentUser) return;
     if (activeTab === 'addresses') {
       void loadAddresses();
     } else if (activeTab === 'orders') {
       void loadOrders();
+    } else if (activeTab === 'vouchers') {
+      void loadVouchers();
     }
-  }, [activeTab, currentUser, loadAddresses, loadOrders]);
+  }, [activeTab, currentUser, loadAddresses, loadOrders, loadVouchers]);
 
   if (!currentUser) {
     return null;
@@ -608,6 +632,19 @@ export const AccountPage: React.FC<AccountPageProps> = ({
             >
               <span className="material-symbols-outlined text-[18px]">receipt_long</span>
               <span>Lịch sử đơn hàng</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('vouchers')}
+              className={`w-full py-2.5 px-3.5 rounded-xl flex items-center gap-2.5 transition-all cursor-pointer ${
+                activeTab === 'vouchers'
+                  ? 'bg-primary text-white shadow-xs'
+                  : 'text-text-primary hover:bg-slate-50'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[18px]">confirmation_number</span>
+              <span>Kho Voucher</span>
             </button>
           </div>
 
@@ -1287,6 +1324,140 @@ export const AccountPage: React.FC<AccountPageProps> = ({
                               </button>
                             )}
                           </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ================= TAB 4: VOUCHER WALLET ================= */}
+          {activeTab === 'vouchers' && (
+            <div className="bg-white border border-border-subtle rounded-2xl p-6 sm:p-8 shadow-xs space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-border-subtle">
+                <div>
+                  <h2 className="text-base font-extrabold text-text-primary uppercase tracking-tight flex items-center gap-2">
+                    <span className="material-symbols-outlined text-primary text-[20px]">
+                      confirmation_number
+                    </span>
+                    Kho Voucher của bạn ({vouchers.length})
+                  </h2>
+                  <p className="text-xs text-text-secondary mt-0.5">
+                    Xem mã giảm giá khả dụng và sao chép để áp dụng khi thanh toán
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void loadVouchers()}
+                  disabled={loadingVouchers}
+                  className="px-4 py-2 rounded-xl border border-border-subtle hover:border-primary hover:text-primary text-text-primary font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[16px]">refresh</span>
+                  <span>{loadingVouchers ? 'Đang tải...' : 'Làm mới'}</span>
+                </button>
+              </div>
+
+              {loadingVouchers ? (
+                <div className="py-12 text-center text-sm text-text-secondary">
+                  Đang tải kho voucher...
+                </div>
+              ) : voucherError ? (
+                <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-badge-discount text-sm flex items-center justify-between gap-3">
+                  <span>{voucherError}</span>
+                  <button
+                    type="button"
+                    onClick={() => void loadVouchers()}
+                    className="px-3 py-1.5 rounded-lg bg-white border border-red-200 font-bold text-xs cursor-pointer"
+                  >
+                    Thử lại
+                  </button>
+                </div>
+              ) : vouchers.length === 0 ? (
+                <div className="py-14 text-center space-y-3">
+                  <span className="material-symbols-outlined text-5xl text-slate-300">
+                    confirmation_number
+                  </span>
+                  <p className="text-sm font-bold text-text-primary">
+                    Hiện chưa có voucher nào khả dụng
+                  </p>
+                  <p className="text-xs text-text-secondary">
+                    Hãy quay lại sau để nhận thêm ưu đãi từ TecoStore nhé!
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {vouchers.map((voucher) => {
+                    const isPercent = voucher.discountType === 'percentage';
+                    const discountLabel = isPercent
+                      ? `Giảm ${voucher.discountValue}%`
+                      : `Giảm ${formatVndPrice(voucher.discountValue)}`;
+                    const isCopied = copiedVoucherCode === voucher.code;
+
+                    return (
+                      <div
+                        key={voucher._id}
+                        className="rounded-2xl border border-border-subtle bg-slate-50/60 p-4 flex flex-col justify-between gap-3 hover:border-primary/40 transition-all"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="px-2.5 py-1 rounded-lg bg-primary/10 text-primary font-extrabold text-xs tracking-wider">
+                                {voucher.code}
+                              </span>
+                              <span className="text-sm font-extrabold text-badge-discount">
+                                {discountLabel}
+                              </span>
+                            </div>
+                            <p className="text-xs text-text-secondary">
+                              Đơn tối thiểu:{' '}
+                              <span className="font-semibold text-text-primary">
+                                {formatVndPrice(voucher.minOrderAmount)}
+                              </span>
+                              {isPercent && voucher.maxDiscountAmount ? (
+                                <>
+                                  {' · '}Giảm tối đa:{' '}
+                                  <span className="font-semibold text-text-primary">
+                                    {formatVndPrice(voucher.maxDiscountAmount)}
+                                  </span>
+                                </>
+                              ) : null}
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void navigator.clipboard?.writeText(voucher.code);
+                              setCopiedVoucherCode(voucher.code);
+                              setTimeout(() => {
+                                setCopiedVoucherCode((prev) =>
+                                  prev === voucher.code ? null : prev,
+                                );
+                              }, 2000);
+                            }}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex-shrink-0 ${
+                              isCopied
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-primary hover:bg-primary-hover text-white'
+                            }`}
+                          >
+                            {isCopied ? 'Đã sao chép' : 'Sao chép'}
+                          </button>
+                        </div>
+
+                        <div className="pt-2.5 border-t border-border-subtle flex items-center justify-between gap-2 text-[11px] text-text-secondary">
+                          <span>
+                            HSD: {new Date(voucher.startDate).toLocaleDateString('vi-VN')} -{' '}
+                            {new Date(voucher.endDate).toLocaleDateString('vi-VN')}
+                          </span>
+                          {typeof voucher.remainingUses === 'number' && (
+                            <span className="font-semibold text-text-primary">
+                              Còn {voucher.remainingUses} lượt
+                            </span>
+                          )}
                         </div>
                       </div>
                     );

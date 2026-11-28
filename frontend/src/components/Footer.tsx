@@ -42,17 +42,11 @@ export const Footer: React.FC = () => {
               Phương thức thanh toán
             </h4>
             <div className="grid grid-cols-4 gap-2 mb-4 ">
-              <div className="bg-white rounded p-1 text-center text-[10px] font-bold text-slate-900 flex items-center justify-center h-8">
-                VietQR
+              <div className="bg-white rounded p-1 text-center text-[10px] font-bold text-green-900 flex items-center justify-center h-8">
+                COD
               </div>
               <div className="bg-white rounded p-1 text-center text-[10px] font-bold text-blue-700 flex items-center justify-center h-8">
                 VNPAY
-              </div>
-              <div className="bg-white rounded p-1 text-center text-[10px] font-bold text-pink-600 flex items-center justify-center h-8">
-                MoMo
-              </div>
-              <div className="bg-white rounded p-1 text-center text-[10px] font-bold text-blue-900 flex items-center justify-center h-8">
-                VISA
               </div>
             </div>
           </div>
@@ -61,7 +55,7 @@ export const Footer: React.FC = () => {
         {/* Bottom Copyright Strip */}
         <div className="pt-6 flex flex-col md:flex-row items-center justify-between text-caption font-caption text-surface-dim gap-2">
           <p>
-            © 2026 TecoStore Vietnam. Bản quyền thuộc về TecoStore.
+            © 2026 TecoStore Vietnam. Nhóm 2 môn UDTMDT
           </p>
         </div>
       </div>
