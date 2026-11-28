@@ -21,9 +21,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // If already logged in, redirect to home
+  // If already logged in, redirect to /admin for staff/admin or / for customer
   if (currentUser) {
-    navigate('/');
+    const target =
+      currentUser.role === 'admin' ||
+      currentUser.role === 'employee' ||
+      currentUser.role === 'staff'
+        ? '/admin'
+        : '/';
+    navigate(target, { replace: true });
     return null;
   }
 
@@ -40,9 +46,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
       onLoginSuccess(res.user);
 
-      // Redirect back to returnUrl or home
-      const from = (location.state as { from?: string })?.from || '/';
-      navigate(from, { replace: true });
+      const isStaffUser =
+        res.user.role === 'admin' ||
+        res.user.role === 'employee' ||
+        res.user.role === 'staff';
+      const stateFrom = (location.state as { from?: string })?.from;
+      const destination = stateFrom || (isStaffUser ? '/admin' : '/');
+      navigate(destination, { replace: true });
     } catch (err: unknown) {
       setError(
         err instanceof Error

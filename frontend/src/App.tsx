@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { Brand, Category, Product, ProductVariant, CartItem, ProductLine, User, Order } from './types/api';
 import { authApi, brandsApi, categoriesApi, productLinesApi, productsApi, cartApi, getAccessToken } from './services/api';
 import { Header } from './components/Header';
@@ -11,15 +11,20 @@ import { CartPage } from './pages/CartPage';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { AccountPage } from './pages/AccountPage';
+import { PaymentReturnPage } from './pages/PaymentReturnPage';
+import { AdminPortalPage } from './pages/AdminPortalPage';
 
 export const App: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isAdminWorkspace = location.pathname.startsWith('/admin');
 
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [productLines, setProductLines] = useState<ProductLine[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authChecking, setAuthChecking] = useState<boolean>(() => Boolean(getAccessToken()));
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,9 +52,9 @@ export const App: React.FC = () => {
 
   const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
 
-  // Đồng bộ giỏ hàng từ Backend MongoDB khi người dùng đăng nhập
+  // Đồng bộ giỏ hàng từ Backend MongoDB khi người dùng Customer đăng nhập
   useEffect(() => {
-    if (currentUser) {
+    if (currentUser && currentUser.role === 'customer') {
       cartApi
         .getCart()
         .then((bCart) => {
@@ -66,6 +71,7 @@ export const App: React.FC = () => {
                   isActive: true,
                   variants: [
                     {
+                      _id: item.variantId,
                       sku: item.sku,
                       price: item.price,
                       stock: item.stock ?? 10,
@@ -76,6 +82,7 @@ export const App: React.FC = () => {
                   ],
                 },
                 variant: {
+                  _id: item.variantId,
                   sku: item.sku,
                   price: item.price,
                   stock: item.stock ?? 10,
@@ -123,6 +130,7 @@ export const App: React.FC = () => {
 
     // Check if token exists, load current profile
     if (getAccessToken()) {
+      setAuthChecking(true);
       authApi
         .getProfile()
         .then((res) => {
@@ -132,13 +140,31 @@ export const App: React.FC = () => {
         })
         .catch(() => {
           // Token expired or invalid
+        })
+        .finally(() => {
+          if (isMounted) setAuthChecking(false);
         });
+    } else {
+      setAuthChecking(false);
     }
 
     return () => {
       isMounted = false;
     };
   }, []);
+
+  const refreshCatalog = async () => {
+    const [productsData, categoriesData, brandsData, productLinesData] = await Promise.all([
+      productsApi.findAll(),
+      categoriesApi.findAll().catch(() => [] as Category[]),
+      brandsApi.findAll().catch(() => [] as Brand[]),
+      productLinesApi.findAll().catch(() => [] as ProductLine[]),
+    ]);
+    setProducts(productsData);
+    setCategories(categoriesData);
+    setBrands(brandsData);
+    setProductLines(productLinesData);
+  };
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -165,7 +191,7 @@ export const App: React.FC = () => {
     if (!primaryVar) return;
 
     try {
-      await cartApi.addItem(product._id, primaryVar.sku, 1);
+      await cartApi.addItem(product._id, primaryVar.sku, 1, primaryVar._id);
       const bCart = await cartApi.getCart();
       if (bCart?.items) {
         setCartItems(
@@ -180,6 +206,7 @@ export const App: React.FC = () => {
               isActive: true,
               variants: [
                 {
+                  _id: item.variantId,
                   sku: item.sku,
                   price: item.price,
                   stock: item.stock ?? 10,
@@ -190,6 +217,7 @@ export const App: React.FC = () => {
               ],
             },
             variant: {
+              _id: item.variantId,
               sku: item.sku,
               price: item.price,
               stock: item.stock ?? 10,
@@ -261,6 +289,35 @@ export const App: React.FC = () => {
     showToast(`Đã xóa ${itemIds.length} sản phẩm khỏi giỏ hàng.`);
   };
 
+  // Nếu đường dẫn là /admin/* -> Hiển thị giao diện Enterprise Admin độc lập hoàn toàn (Sidebar trái, không chung Header/Footer website bán hàng)
+  if (isAdminWorkspace) {
+    return (
+      <>
+        {toastMessage && (
+          <div className="fixed bottom-5 right-5 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-2.5 text-xs font-semibold border border-slate-700">
+            <span className="material-symbols-outlined text-emerald-400 text-[18px]">
+              check_circle
+            </span>
+            <span>{toastMessage}</span>
+          </div>
+        )}
+        <AdminPortalPage
+          currentUser={currentUser}
+          loadingAuth={authChecking}
+          products={products}
+          categories={categories}
+          brands={brands}
+          productLines={productLines}
+          onRefreshCatalog={refreshCatalog}
+          onLogoutSuccess={() => {
+            setCurrentUser(null);
+            showToast('Đã đăng xuất khỏi hệ thống quản trị.');
+          }}
+        />
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-surface-page text-text-primary font-body-default">
       {/* Toast Notification */}
@@ -325,6 +382,7 @@ export const App: React.FC = () => {
               <ProductDetailPage
                 categories={categories}
                 brands={brands}
+                currentUser={currentUser}
                 onAddToCart={(prod, v, isBuyNow) => handleAddToCart(prod, v, isBuyNow)}
               />
             }
@@ -342,7 +400,49 @@ export const App: React.FC = () => {
                 onClearSelected={handleClearSelected}
                 onOrderSuccess={(order) => {
                   showToast(`Đơn hàng #${order.orderCode} đã được tạo thành công!`);
-                  setCartItems([]);
+                  cartApi
+                    .getCart()
+                    .then((bCart) => {
+                      if (bCart?.items) {
+                        setCartItems(
+                          bCart.items.map((item) => ({
+                            id: `${item.productId}-${item.sku}`,
+                            product: {
+                              _id: item.productId,
+                              name: item.name,
+                              slug: item.slug,
+                              description: '',
+                              images: item.image ? [item.image] : [],
+                              isActive: true,
+                              variants: [
+                                {
+                                  _id: item.variantId,
+                                  sku: item.sku,
+                                  price: item.price,
+                                  stock: item.stock ?? 10,
+                                  color: item.color,
+                                  storage: item.storage,
+                                  images: item.image ? [item.image] : [],
+                                },
+                              ],
+                            },
+                            variant: {
+                              _id: item.variantId,
+                              sku: item.sku,
+                              price: item.price,
+                              stock: item.stock ?? 10,
+                              color: item.color,
+                              storage: item.storage,
+                              images: item.image ? [item.image] : [],
+                            },
+                            quantity: item.quantity,
+                          })),
+                        );
+                      } else {
+                        setCartItems([]);
+                      }
+                    })
+                    .catch(() => setCartItems([]));
                 }}
               />
             }
@@ -381,13 +481,19 @@ export const App: React.FC = () => {
             element={
               <AccountPage
                 currentUser={currentUser}
-                onLogoutSuccess={() => {
+                products={products}
+                onUserUpdated={(updatedUser) => setCurrentUser(updatedUser)}
+                onLogoutSuccess={(customMessage) => {
                   setCurrentUser(null);
-                  showToast('Đã đăng xuất tài khoản thành công.');
+                  showToast(customMessage || 'Đã đăng xuất tài khoản thành công.');
                 }}
               />
             }
           />
+
+          {/* 8. Trang Kết quả thanh toán VNPay: /payment/vnpay-return */}
+          <Route path="/payment/vnpay-return" element={<PaymentReturnPage />} />
+          <Route path="/vnpay-return" element={<PaymentReturnPage />} />
 
           {/* Fallback route */}
           <Route

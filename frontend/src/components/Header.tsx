@@ -154,6 +154,23 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* Trailing Action Cluster */}
             <div className="flex items-center space-x-2 flex-shrink-0">
+              {(currentUser?.role === 'admin' ||
+                currentUser?.role === 'employee' ||
+                currentUser?.role === 'staff') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigate('/admin');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 transition-all cursor-pointer font-bold text-xs"
+                >
+                  <span className="material-symbols-outlined text-[20px] text-amber-600">
+                    admin_panel_settings
+                  </span>
+                  <span className="hidden lg:inline">Quản trị</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {

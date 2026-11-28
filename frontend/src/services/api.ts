@@ -1,17 +1,44 @@
 import {
+  Address,
   AuthResponse,
   BackendCart,
   Brand,
   Category,
+  ChangePasswordDTO,
+  CreateAddressDTO,
+  CreateBrandDTO,
+  CreateCategoryDTO,
   CreateOrderDTO,
+  CreateProductDTO,
+  CreateProductLineDTO,
+  CreateReviewDTO,
+  CreateVariantDTO,
+  CreateVnpayUrlResponse,
+  CreateVoucherDTO,
   LoginDTO,
   Order,
   Product,
   ProductLine,
+  ProductReviewsResponse,
   ProductVariant,
   RegisterDTO,
+  Review,
+  StaffOrderStatus,
+  UpdateAddressDTO,
+  UpdateBrandDTO,
+  UpdateCategoryDTO,
+  UpdateProductDTO,
+  UpdateProductLineDTO,
+  UpdateProfileDTO,
+  UpdateReviewDTO,
+  UpdateVariantDTO,
+  UpdateVoucherDTO,
   User,
+  ValidateVoucherResponse,
   VariantBySkuResponse,
+  VnpayReturnVerifyResponse,
+  Voucher,
+  VoucherWalletResponse,
 } from '../types/api';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
@@ -49,11 +76,16 @@ async function fetchJson<T>(endpoint: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...init,
     headers,
+    credentials: init?.credentials ?? 'include',
   });
 
   if (!response.ok) {
     const errorBody = await response.json().catch(() => ({}));
-    throw new Error(errorBody.message || `API Error: ${response.status}`);
+    const rawMessage = errorBody?.message;
+    const formattedMessage = Array.isArray(rawMessage)
+      ? rawMessage.join(', ')
+      : rawMessage || `API Error: ${response.status}`;
+    throw new Error(formattedMessage);
   }
 
   return response.json() as Promise<T>;
@@ -70,24 +102,95 @@ export const productsApi = {
     fetchJson<ProductVariant>(`/products/${productId}/variants/${variantId}`),
   findVariantBySku: (slug: string, sku: string) =>
     fetchJson<VariantBySkuResponse>(`/products/slug/${slug}/variants/${sku}`),
+  // Admin / Employee CRUD
+  create: (dto: CreateProductDTO) =>
+    fetchJson<Product>('/products', {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    }),
+  update: (id: string, dto: UpdateProductDTO) =>
+    fetchJson<Product>(`/products/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(dto),
+    }),
+  remove: (id: string) =>
+    fetchJson<{ message?: string }>(`/products/${id}`, {
+      method: 'DELETE',
+    }),
+  addVariant: (productId: string, dto: CreateVariantDTO) =>
+    fetchJson<Product>(`/products/${productId}/variants`, {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    }),
+  updateVariant: (productId: string, variantId: string, dto: UpdateVariantDTO) =>
+    fetchJson<Product>(`/products/${productId}/variants/${variantId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(dto),
+    }),
+  removeVariant: (productId: string, variantId: string) =>
+    fetchJson<Product>(`/products/${productId}/variants/${variantId}`, {
+      method: 'DELETE',
+    }),
 };
 
 // ================= CATEGORIES API (/api/categories) =================
 export const categoriesApi = {
   findAll: () => fetchJson<Category[]>('/categories'),
   findBySlug: (slug: string) => fetchJson<Category>(`/categories/slug/${slug}`),
+  create: (dto: CreateCategoryDTO) =>
+    fetchJson<Category>('/categories', {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    }),
+  update: (id: string, dto: UpdateCategoryDTO) =>
+    fetchJson<Category>(`/categories/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(dto),
+    }),
+  remove: (id: string) =>
+    fetchJson<{ message?: string }>(`/categories/${id}`, {
+      method: 'DELETE',
+    }),
 };
 
 // ================= BRANDS API (/api/brands) =================
 export const brandsApi = {
   findAll: () => fetchJson<Brand[]>('/brands'),
   findBySlug: (slug: string) => fetchJson<Brand>(`/brands/slug/${slug}`),
+  create: (dto: CreateBrandDTO) =>
+    fetchJson<Brand>('/brands', {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    }),
+  update: (id: string, dto: UpdateBrandDTO) =>
+    fetchJson<Brand>(`/brands/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(dto),
+    }),
+  remove: (id: string) =>
+    fetchJson<{ message?: string }>(`/brands/${id}`, {
+      method: 'DELETE',
+    }),
 };
 
 // ================= PRODUCT LINES API (/api/productlines) =================
 export const productLinesApi = {
   findAll: () => fetchJson<ProductLine[]>('/productlines'),
   findBySlug: (slug: string) => fetchJson<ProductLine>(`/productlines/slug/${slug}`),
+  create: (dto: CreateProductLineDTO) =>
+    fetchJson<ProductLine>('/productlines', {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    }),
+  update: (id: string, dto: UpdateProductLineDTO) =>
+    fetchJson<ProductLine>(`/productlines/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(dto),
+    }),
+  remove: (id: string) =>
+    fetchJson<{ message?: string }>(`/productlines/${id}`, {
+      method: 'DELETE',
+    }),
 };
 
 // ================= AUTH API (/api/auth) =================
@@ -110,6 +213,16 @@ export const authApi = {
   },
   getProfile: () =>
     fetchJson<{ message: string; user: User }>('/auth/me'),
+  refreshToken: async () => {
+    const res = await fetchJson<AuthResponse>('/auth/refresh', {
+      method: 'POST',
+      credentials: 'include',
+    });
+    if (res.accessToken) {
+      setAccessToken(res.accessToken);
+    }
+    return res;
+  },
   logout: async () => {
     try {
       await fetchJson<{ message: string }>('/auth/logout', {
@@ -122,48 +235,179 @@ export const authApi = {
   },
 };
 
+// ================= USERS API (/api/users) =================
+export const usersApi = {
+  getMe: () => fetchJson<User>('/users/me'),
+  updateProfile: (dto: UpdateProfileDTO) =>
+    fetchJson<{ message: string; user: User }>('/users/me', {
+      method: 'PATCH',
+      body: JSON.stringify(dto),
+    }),
+  changePassword: (dto: ChangePasswordDTO) =>
+    fetchJson<{ message: string }>('/users/me/change-password', {
+      method: 'PATCH',
+      body: JSON.stringify(dto),
+    }),
+};
+
+// ================= ADDRESSES API (/api/addresses) =================
+export const addressesApi = {
+  getMyAddresses: () => fetchJson<Address[]>('/addresses/me'),
+  createAddress: (dto: CreateAddressDTO) =>
+    fetchJson<{ message: string; address: Address }>('/addresses', {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    }),
+  updateAddress: (id: string, dto: UpdateAddressDTO) =>
+    fetchJson<{ message: string; address: Address }>(`/addresses/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(dto),
+    }),
+  setDefaultAddress: (id: string) =>
+    fetchJson<{ message: string; address: Address }>(`/addresses/${id}/default`, {
+      method: 'PATCH',
+    }),
+  removeAddress: (id: string) =>
+    fetchJson<{ message: string; newDefaultAddressId: string | null }>(`/addresses/${id}`, {
+      method: 'DELETE',
+    }),
+};
+
 // ================= CART API (/api/cart) =================
 export const cartApi = {
   getCart: () => fetchJson<BackendCart>('/cart'),
-  addItem: (productId: string, sku: string, quantity = 1) =>
-    fetchJson<BackendCart>('/cart/items', {
+  addItem: (productId: string, sku: string, quantity = 1, variantId?: string) =>
+    fetchJson<{ message: string; cart: BackendCart }>('/cart/items', {
       method: 'POST',
-      body: JSON.stringify({ productId, sku, quantity }),
+      body: JSON.stringify({
+        productId,
+        sku,
+        ...(variantId ? { variantId } : {}),
+        quantity,
+      }),
     }),
-  updateQuantity: (sku: string, quantity: number) =>
-    fetchJson<BackendCart>(`/cart/items/${sku}`, {
+  updateQuantity: (variantIdOrSku: string, quantity: number) =>
+    fetchJson<{ message: string; cart: BackendCart }>(`/cart/items/${variantIdOrSku}`, {
       method: 'PATCH',
       body: JSON.stringify({ quantity }),
     }),
-  removeItem: (sku: string) =>
-    fetchJson<BackendCart>(`/cart/items/${sku}`, {
+  removeItem: (variantIdOrSku: string) =>
+    fetchJson<{ message: string; cart: BackendCart; totalItems: number }>(
+      `/cart/items/${variantIdOrSku}`,
+      {
+        method: 'DELETE',
+      },
+    ),
+  clearCart: () =>
+    fetchJson<{ message: string; totalItems: number }>('/cart', {
       method: 'DELETE',
     }),
-  clearCart: () =>
-    fetchJson<{ message: string; items: []; totalItems: 0; totalAmount: 0 }>('/cart', {
-      method: 'DELETE',
+};
+
+// ================= VOUCHERS API (/api/vouchers) =================
+export const vouchersApi = {
+  getMyWallet: () => fetchJson<VoucherWalletResponse>('/vouchers/my-wallet'),
+  validateVoucher: (code: string) =>
+    fetchJson<ValidateVoucherResponse>('/vouchers/validate', {
+      method: 'POST',
+      body: JSON.stringify({ code: code.trim().toUpperCase() }),
+    }),
+  getAllVouchers: () => fetchJson<Voucher[]>('/vouchers'),
+  getVoucherDetail: (id: string) => fetchJson<Voucher>(`/vouchers/${id}`),
+  createVoucher: (dto: CreateVoucherDTO) =>
+    fetchJson<{ message: string; voucher: Voucher }>('/vouchers', {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    }),
+  updateVoucher: (id: string, dto: UpdateVoucherDTO) =>
+    fetchJson<{ message: string; voucher: Voucher }>(`/vouchers/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(dto),
     }),
 };
 
 // ================= ORDERS API (/api/orders) =================
 export const ordersApi = {
-  createOrder: (dto: CreateOrderDTO) =>
-    fetchJson<{ message: string; order: Order }>('/orders', {
+  createOrder: async (dto: CreateOrderDTO): Promise<Order> => {
+    const res = await fetchJson<Order | { order: Order }>('/orders', {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    });
+    return 'order' in res && res.order ? res.order : (res as Order);
+  },
+  getUserOrders: async (): Promise<Order[]> => {
+    const res = await fetchJson<Order[] | { data: Order[] }>('/orders/me');
+    return Array.isArray(res) ? res : res.data || [];
+  },
+  getOrderDetail: (orderId: string) => fetchJson<Order>(`/orders/${orderId}`),
+  cancelOrder: (orderId: string) =>
+    fetchJson<{ message: string; order: Order }>(`/orders/${orderId}/cancel`, {
+      method: 'PATCH',
+    }),
+  // Admin / Employee endpoints
+  getAllOrdersManage: () => fetchJson<Order[]>('/orders/manage'),
+  getManagedOrderDetail: (orderId: string) => fetchJson<Order>(`/orders/manage/${orderId}`),
+  updateOrderStatus: (orderId: string, status: StaffOrderStatus) =>
+    fetchJson<{ message: string; order: Order }>(`/orders/${orderId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
+};
+
+// ================= PAYMENTS API (/api/payments) =================
+export const paymentsApi = {
+  createVnpayUrl: (orderId: string) =>
+    fetchJson<CreateVnpayUrlResponse>('/payments/vnpay/create-url', {
+      method: 'POST',
+      body: JSON.stringify({ orderId }),
+    }),
+  verifyVnpayReturn: (queryString: string) => {
+    const normalizedQuery = queryString.startsWith('?') ? queryString : `?${queryString}`;
+    return fetchJson<VnpayReturnVerifyResponse>(`/payments/vnpay/return${normalizedQuery}`);
+  },
+};
+
+// ================= REVIEWS API (/api/reviews) =================
+export const reviewsApi = {
+  getProductReviews: async (productId: string): Promise<ProductReviewsResponse> => {
+    const res = await fetchJson<ProductReviewsResponse | Review[]>(
+      `/reviews/product/${productId}`,
+    );
+    if (Array.isArray(res)) {
+      return { productId, total: res.length, reviews: res };
+    }
+    return {
+      productId: res.productId || productId,
+      total: res.total ?? (res.reviews?.length || 0),
+      reviews: res.reviews || [],
+    };
+  },
+  getMyReviews: () => fetchJson<Review[]>('/reviews/me'),
+  createReview: (dto: CreateReviewDTO) =>
+    fetchJson<{ message: string; review: Review }>('/reviews', {
       method: 'POST',
       body: JSON.stringify(dto),
     }),
-  getUserOrders: (page = 1, limit = 10) =>
-    fetchJson<{
-      data: Order[];
-      total: number;
-      page: number;
-      limit: number;
-      totalPages: number;
-    }>(`/orders?page=${page}&limit=${limit}`),
-  getOrderDetail: (idOrCode: string) => fetchJson<Order>(`/orders/${idOrCode}`),
-  cancelOrder: (idOrCode: string) =>
-    fetchJson<{ message: string; order: Order }>(`/orders/${idOrCode}/cancel`, {
+  updateReview: (id: string, dto: UpdateReviewDTO) =>
+    fetchJson<{ message: string; review: Review }>(`/reviews/${id}`, {
       method: 'PATCH',
+      body: JSON.stringify(dto),
+    }),
+  deleteReview: (id: string) =>
+    fetchJson<{ message: string }>(`/reviews/${id}`, {
+      method: 'DELETE',
+    }),
+  // Admin / Employee Moderation & Shop Reply
+  getReviewsForModeration: () => fetchJson<Review[]>('/reviews/manage'),
+  moderateReview: (id: string, isHidden: boolean) =>
+    fetchJson<{ message: string; review: Review }>(`/reviews/${id}/moderation`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isHidden }),
+    }),
+  replyToReview: (id: string, comment: string) =>
+    fetchJson<{ message: string }>(`/reviews/${id}/reply`, {
+      method: 'POST',
+      body: JSON.stringify({ comment }),
     }),
 };
 
@@ -186,7 +430,6 @@ export function getPrimaryVariant(product: Product): ProductVariant | undefined 
   if (!product.variants || product.variants.length === 0) {
     return undefined;
   }
-  // Ưu tiên các biến thể có giá thực tế > 0
   const validPriceVariants = product.variants.filter((v) => v.price > 0);
   if (validPriceVariants.length > 0) {
     const inStock = validPriceVariants.filter((v) => (v.stock || 0) > 0);
@@ -194,7 +437,6 @@ export function getPrimaryVariant(product: Product): ProductVariant | undefined 
     return [...pool].sort((a, b) => a.price - b.price)[0];
   }
 
-  // Nếu không có biến thể nào có giá > 0, lấy biến thể đầu tiên
   return product.variants[0];
 }
 
@@ -248,4 +490,3 @@ export function getProductSpecChips(product: Product): string[] {
 
   return chips.slice(0, 3);
 }
-
