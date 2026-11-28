@@ -7,9 +7,11 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { Product, ProductSchema } from '../products/schemas/product.schema';
 
 import { ProductLine, ProductLineSchema } from '../productlines/schemas/productline.schema';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
     imports:[
+        AuthModule,
         MongooseModule.forFeature([
             {
                 name: Category.name,

@@ -1,100 +1,183 @@
+
 import {
-  Body,
-  Controller,
-  DefaultValuePipe,
-  Get,
-  HttpCode,
-  HttpStatus,
-  Param,
-  ParseIntPipe,
-  Patch,
-  Post,
-  Query,
-  Req,
-  UseGuards,
+    Get,
+    Param,
+    Body,
+    Controller,
+    Post,
+    Req,
+    UnauthorizedException,
+    ForbiddenException,
+    UseGuards,
+    Patch,
 } from '@nestjs/common';
+
 import { OrdersService } from './orders.service';
-import { CreateOrderDTO } from './dto/create-order.dto';
+import { CreateOrderDto } from './create-order.dto';
+import { UpdateOrderStatusDto } from './update-order-status.dto';
+
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
-import { OrderStatus, PaymentStatus } from './schemas/order.schema';
+
+import { UserRole } from '../auth/user-role.enum';
+
+import { PoliciesGuard } from '../auth/authorization/policies/guards/policies.guard';
+import { CheckPolicies } from '../auth/authorization/policies/decorators/check-policies.decorator';
+
+import { Action } from '../auth/authorization/enums/action.enum';
+import { Subject } from '../auth/authorization/enums/subject.enum';
 
 @Controller('orders')
-@UseGuards(JwtAuthGuard)
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+    constructor(
+        private readonly ordersService: OrdersService,
+    ) {}
 
-  @Post()
-  @HttpCode(HttpStatus.CREATED)
-  createOrder(
-    @Req() req: AuthenticatedRequest,
-    @Body() dto: CreateOrderDTO,
-  ) {
-    const userId = req.user!.id;
-    return this.ordersService.createOrder(userId, dto);
-  }
+    //Đặt hàng
+    @Post()
+    @UseGuards(JwtAuthGuard)
+    createOrder(
+        @Req() req: AuthenticatedRequest,
+        @Body() dto: CreateOrderDto,
+    ) {
+        if (!req.user) {
+            throw new UnauthorizedException();
+        }
 
-  @Get()
-  getUserOrders(
-    @Req() req: AuthenticatedRequest,
-    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
-  ) {
-    const userId = req.user!.id;
-    return this.ordersService.getUserOrders(userId, page, limit);
-  }
+        // Tạm kiểm tra role trực tiếp.
+        // Sau này sẽ thay bằng PBAC.
+        if (req.user.role !== UserRole.CUSTOMER) {
+            throw new ForbiddenException(
+                'Chỉ Customer được thực hiện Checkout',
+            );
+        }
 
-  // --- Admin Routes ---
-  @Get('admin/all')
-  getAllOrdersAdmin(
-    @Req() req: AuthenticatedRequest,
-    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
-    @Query('status') status?: string,
-    @Query('search') search?: string,
-  ) {
-    const userRole = req.user!.role;
-    return this.ordersService.getAllOrdersAdmin(userRole, page, limit, status, search);
-  }
+        return this.ordersService.createOrder(
+            req.user.id,
+            dto,
+        );
+    }
 
-  @Patch('admin/:idOrCode/status')
-  updateOrderStatusAdmin(
-    @Req() req: AuthenticatedRequest,
-    @Param('idOrCode') idOrCode: string,
-    @Body('status') newStatus: OrderStatus,
-  ) {
-    const userRole = req.user!.role;
-    return this.ordersService.updateOrderStatusAdmin(userRole, idOrCode, newStatus);
-  }
+    // quản lý xem tất cả đơn hàng (admin)
+    @Get('manage')
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Read,
+        subject: Subject.Order,
+    })
+    getAllOrders(
+        @Req() req: AuthenticatedRequest,
+    ) {
+        const user = req.user;
 
-  @Patch('admin/:idOrCode/payment')
-  updatePaymentStatusAdmin(
-    @Req() req: AuthenticatedRequest,
-    @Param('idOrCode') idOrCode: string,
-    @Body('paymentStatus') paymentStatus: PaymentStatus,
-  ) {
-    const userRole = req.user!.role;
-    return this.ordersService.updatePaymentStatusAdmin(userRole, idOrCode, paymentStatus);
-  }
+        if (!user) {
+            throw new UnauthorizedException(
+                'Vui lòng đăng nhập',
+            );
+        }
+        return this.ordersService.getAllOrders();
+    }
 
-  // --- Customer / Shared Routes ---
-  @Get(':idOrCode')
-  getOrderDetail(
-    @Req() req: AuthenticatedRequest,
-    @Param('idOrCode') idOrCode: string,
-  ) {
-    const userId = req.user!.id;
-    const userRole = req.user!.role;
-    return this.ordersService.getOrderDetail(userId, userRole, idOrCode);
-  }
 
-  @Patch(':idOrCode/cancel')
-  cancelOrder(
-    @Req() req: AuthenticatedRequest,
-    @Param('idOrCode') idOrCode: string,
-  ) {
-    const userId = req.user!.id;
-    return this.ordersService.cancelOrder(userId, idOrCode);
-  }
+// Admin/Employee xem chi tiết đơn hàng
+    @Get('manage/:id')
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Read,
+        subject: Subject.Order,
+    })
+    getManagedOrderDetail(
+    @Param('id') orderId: string,
+    ) {
+        return this.ordersService.getManagedOrderDetail(
+            orderId,
+        );
+    }
+
+    //Xem tất cả đơn hàng của mình
+    @Get(['', 'me'])
+    @UseGuards(JwtAuthGuard)
+    getMyOrders(
+        @Req() req:AuthenticatedRequest,
+    ){
+        const userId = req.user?.id;
+
+        if (!userId){
+            throw new UnauthorizedException(
+                'Không xác định được người dùng'
+            );
+        }
+
+        return this.ordersService.getMyOrders(userId)
+    }
+
+
+    //xem chi tiết đơn hàng đã đặt
+    @Get(':id')
+    @UseGuards(JwtAuthGuard)
+    getOrderDetail(
+        @Req() req: AuthenticatedRequest,
+        @Param('id') orderId: string,
+    ) {
+        const userId = req.user?.id;
+
+        if (!userId) {
+            throw new UnauthorizedException(
+                'Không xác định được người dùng',
+            );
+        }
+
+        return this.ordersService.getOrderDetail(
+            req.user!,
+            orderId,
+        );
+    }
+
+    //hủy đơn hàng (user)
+    @Patch(':id/cancel')
+    @UseGuards(JwtAuthGuard)
+    cancelOrder(
+        @Req() req: AuthenticatedRequest,
+        @Param('id') orderId: string,
+    ) {
+        const userId = req.user?.id;
+
+        if (!userId) {
+            throw new UnauthorizedException(
+                'Không xác định được người dùng',
+            );
+        }
+
+        return this.ordersService.cancelOrder(
+            req.user!,
+            orderId,
+        );
+    }
+
+    //thay đổi trạng thái đơn hàng(admin)
+    @Patch(':id/status')
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Update,
+        subject: Subject.Order,
+    })
+    updateOrderStatus(
+        @Req() req: AuthenticatedRequest,
+        @Param('id') orderId: string,
+        @Body() dto: UpdateOrderStatusDto,
+    ) {
+        const user = req.user;
+
+        if (!user) {
+            throw new UnauthorizedException(
+                'Vui lòng đăng nhập',
+            );
+        }
+
+        return this.ordersService.updateOrderStatus(
+            orderId,
+            dto,
+        );
+    }
+
 }
-

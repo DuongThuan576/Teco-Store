@@ -1,142 +1,138 @@
-import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument, SchemaTypes, Types } from 'mongoose';
+import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
+import { HydratedDocument, Types, Schema as MongooseSchema } from "mongoose";
 
 export type OrderDocument = HydratedDocument<Order>;
 
-export enum PaymentMethod {
-  COD = 'cod',
-  BANK_TRANSFER = 'bank_transfer',
-  ONLINE = 'online',
-}
-
-export enum PaymentStatus {
-  PENDING = 'pending',
-  PAID = 'paid',
-  FAILED = 'failed',
-}
-
-export enum OrderStatus {
-  PENDING = 'pending',
-  PROCESSING = 'processing',
-  SHIPPING = 'shipping',
-  DELIVERED = 'delivered',
-  CANCELLED = 'cancelled',
-}
-
-@Schema({ _id: false })
-export class CustomerInfo {
-  @Prop({ required: true, trim: true })
-  fullName: string;
-
-  @Prop({ required: true, trim: true, lowercase: true })
-  email: string;
-
-  @Prop({ required: true, trim: true })
-  phone: string;
-
-  @Prop({ required: true, trim: true })
-  shippingAddress: string;
-
-  @Prop({ default: '', trim: true })
-  city: string;
-
-  @Prop({ default: '', trim: true })
-  district: string;
-
-  @Prop({ default: '', trim: true })
-  note: string;
-}
-
-export const CustomerInfoSchema = SchemaFactory.createForClass(CustomerInfo);
-
-@Schema({ _id: false })
+//sản phẩm tại thời điểm đặt hàng
+@Schema({_id:false})
 export class OrderItem {
-  @Prop({ type: SchemaTypes.ObjectId, ref: 'Product', required: true })
-  productId: Types.ObjectId;
+    @Prop({type: Types.ObjectId,required:true})
+    productId: Types.ObjectId;
 
-  @Prop({ required: true, trim: true })
-  sku: string;
+    @Prop({type: Types.ObjectId,required:true})
+    variantId: Types.ObjectId;
 
-  @Prop({ required: true, trim: true })
-  name: string;
+    @Prop({required:true})
+    productName:string;
 
-  @Prop({ required: true, trim: true })
-  slug: string;
+    @Prop({required:true})
+    variantName:string;
 
-  @Prop({ default: '', trim: true })
-  color: string;
+    @Prop({required:true})
+    sku: string;
 
-  @Prop({ default: '', trim: true })
-  storage: string;
+    @Prop({required:true, min: 0})
+    unitPrice: number;
 
-  @Prop({ default: '' })
-  image: string;
+    @Prop({required:true, min: 1})
+    quantity: number;
 
-  @Prop({ required: true, min: 0 })
-  price: number;
+    @Prop({required:true, min: 0})
+    subtotal: number;
 
-  @Prop({ required: true, min: 1 })
-  quantity: number;
 }
 
 export const OrderItemSchema = SchemaFactory.createForClass(OrderItem);
 
+//địa chỉ giao hàng tại checkout
+@Schema({_id:false})
+export class  ShippingAddress {
+    @Prop({ required: true})
+    hoTenNguoiNhan:string;
+
+    @Prop({ required: true})
+    soDienThoai:string;
+
+    @Prop({ required: true})
+    tinhThanh:string;
+
+    @Prop({ required: true})
+    quanHuyen:string;
+
+    @Prop({ required: true})
+    phuongXa:string;
+
+    @Prop({ required: true})
+    diaChiChiTiet:string;
+}
+
+export const ShippingAddressSchema = SchemaFactory.createForClass(ShippingAddress);
+
+//Document Order
 @Schema({
-  collection: 'orders',
-  timestamps: true,
+    timestamps: true,
+    collection: 'orders'
 })
+
 export class Order {
-  @Prop({ required: true, unique: true, uppercase: true, trim: true })
-  orderCode: string;
+    _id: Types.ObjectId;
 
-  @Prop({ type: SchemaTypes.ObjectId, ref: 'User', required: true })
-  userId: Types.ObjectId;
+    @Prop({required:true, unique:true})
+    orderCode: string;
 
-  @Prop({ type: CustomerInfoSchema, required: true })
-  customerInfo: CustomerInfo;
+    @Prop({type: Types.ObjectId, required:true})
+    userId:Types.ObjectId;
 
-  @Prop({ type: [OrderItemSchema], required: true })
-  items: OrderItem[];
+    @Prop({
+        type:[OrderItemSchema],
+        required:true
+    })
+    items: OrderItem[]
 
-  @Prop({ required: true, min: 0 })
-  subtotal: number;
+    @Prop({
+        type: ShippingAddressSchema,
+        required: true
+    })
+    shippingAddress: ShippingAddress;
 
-  @Prop({ default: 0, min: 0 })
-  discountAmount: number;
+    @Prop({type: MongooseSchema.Types.ObjectId, ref:'Voucher' ,default:null})
+    voucherId?: Types.ObjectId|null;
 
-  @Prop({ default: 0, min: 0 })
-  shippingFee: number;
+    @Prop({type:String, default: null})
+    voucherCode?: string | null;
 
-  @Prop({ required: true, min: 0 })
-  totalAmount: number;
+    @Prop({required:true,min:0})
+    subtotal: number;
 
-  @Prop({
-    type: String,
-    enum: Object.values(PaymentMethod),
-    default: PaymentMethod.COD,
-  })
-  paymentMethod: PaymentMethod;
+    @Prop({type: Number, required:true, default: 0, min:0})
+    discountAmount: number
 
-  @Prop({
-    type: String,
-    enum: Object.values(PaymentStatus),
-    default: PaymentStatus.PENDING,
-  })
-  paymentStatus: PaymentStatus;
+    @Prop({ required : true, min:0})
+    totalAmount:number;
 
-  @Prop({
-    type: String,
-    enum: Object.values(OrderStatus),
-    default: OrderStatus.PENDING,
-  })
-  orderStatus: OrderStatus;
+    @Prop({
+        type:String,
+        enum:['cod','vnpay'],
+        required:true
+    })
+    paymentMethod: string;
 
-  @Prop({ type: SchemaTypes.Mixed, default: {} })
-  merchantInfo: Record<string, unknown>;
+    @Prop({
+        type:String,
+        enum: ['pending','paid','failed','refunded'],
+        default: 'pending'
+    })
+    paymentStatus:string;
 
-  createdAt?: Date;
-  updatedAt?: Date;
+    @Prop({
+        type:String,
+        enum: ['cho_xac_nhan',
+            'da_xac_nhan',
+            'dang_giao',
+            'da_giao',
+            'da_huy'
+        ],
+        default:'cho_xac_nhan',
+    })
+    orderStatus:string;
+
+    @Prop({ type:String, default:''})
+    note:string
 }
 
 export const OrderSchema = SchemaFactory.createForClass(Order);
-OrderSchema.index({ userId: 1, createdAt: -1 });
+
+OrderSchema.index({
+    userId: 1,
+    createdAt: -1,
+});

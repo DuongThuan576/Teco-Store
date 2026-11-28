@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from "@nestjs/mongoose";
-import { HydratedDocument } from "mongoose";
+import { HydratedDocument, Types } from "mongoose";
 import { UserRole } from "../user-role.enum";
 
 export type UserDocument = HydratedDocument<User>;
@@ -10,6 +10,8 @@ export type UserDocument = HydratedDocument<User>;
 })
 
 export class User {
+    _id: Types.ObjectId;
+
     @Prop({required:true, trim:true})
     fullName:string;
 
@@ -28,6 +30,9 @@ export class User {
     @Prop({type:String, enum:['active','inactive'], default:'active'})
     status:string;
 
+    @Prop({type: Number, default:0, min: 0 })
+    tokenVersion: number;
+
     createdAt?:Date;
     updatedAt?:Date;
 }
@@ -41,3 +46,4 @@ UserSchema.index(
         name:'unique_user_email',
     },
 );
+

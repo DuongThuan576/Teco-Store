@@ -114,7 +114,8 @@ export class AuthService {
 
         const payload = {
             sub: String(user._id),
-            role: user.role
+            role: user.role ,
+            ver: user.tokenVersion ?? 0 ,
         };
 
         const accessToken = await this.jwtService.signAsync(payload)
@@ -247,6 +248,7 @@ export class AuthService {
         const accessToken = await this.jwtService.signAsync({
             sub: String(user._id),
             role: user.role,
+            ver: user.tokenVersion ?? 0
         });
     
         //Trả cặp token mới

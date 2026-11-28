@@ -9,39 +9,47 @@ import { ConfigService } from '@nestjs/config';
 import { User, UserSchema } from './schemas/user.schema';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthSessionSchema, AuthSession } from './schemas/auth-session.schema';
-
+import { AbilityFactory } from './authorization/ability/ability.factory';
+import { PoliciesGuard } from './authorization/policies/guards/policies.guard';
 
 @Module({
-  imports:[
+  imports: [
     MongooseModule.forFeature([
       {
-        name: User.name , 
-        schema: UserSchema
+        name: User.name,
+        schema: UserSchema,
       },
       {
-        name:AuthSession.name,
-        schema: AuthSessionSchema
-      }
+        name: AuthSession.name,
+        schema: AuthSessionSchema,
+      },
     ]),
 
     JwtModule.registerAsync({
-      inject:[ConfigService],
-      useFactory: (configService:ConfigService) =>{
-        const secret = configService.get<string>('JWT_SECRET')
-        
-        if (!secret || secret.length <32){
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => {
+        const secret = configService.get<string>('JWT_SECRET');
+
+        if (!secret || secret.length < 32) {
           throw new Error('JWT_SECRET Không hợp lệ');
         }
 
         return {
           secret: secret,
           signOptions: { expiresIn: '15m' as const },
-        }
-      }
-    })
+        };
+      },
+    }),
   ],
-  providers: [AuthService, JwtAuthGuard],
+  providers: [AuthService, JwtAuthGuard, PoliciesGuard, AbilityFactory],
   controllers: [AuthController],
-  exports: [AuthService, JwtAuthGuard, JwtModule, MongooseModule],
+  exports: [
+    AuthService,
+    JwtAuthGuard,
+    JwtModule,
+    MongooseModule,
+    PoliciesGuard,
+    AbilityFactory,
+  ],
 })
 export class AuthModule {}

@@ -42,7 +42,7 @@ export class UsersController {
 
     // 3. Gọi Service
     return this.usersService.getMyProfile(
-      userId,
+      req.user!,
     );
   }
 
@@ -64,7 +64,7 @@ export class UsersController {
 
         // 2. Gọi Service để cập nhật
         return this.usersService.updateMyProfile(
-            userId,
+            req.user!,
             dto,
         );
     }
@@ -85,7 +85,7 @@ export class UsersController {
         }
 
         return this.usersService.changePassword(
-            userId,
+            req.user!,
             dto,
         );
     }

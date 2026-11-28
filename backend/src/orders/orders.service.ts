@@ -1,385 +1,853 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types, isValidObjectId } from 'mongoose';
-import {
-  Order,
-  OrderDocument,
-  OrderItem,
-  OrderStatus,
-  PaymentMethod,
-  PaymentStatus,
-} from './schemas/order.schema';
+import { Injectable, BadRequestException, NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
+
+import { InjectModel, InjectConnection } from '@nestjs/mongoose';
+import { Model, Types, ClientSession, Connection } from 'mongoose';
+
+import { CreateOrderDto } from './create-order.dto';
+import { UpdateOrderStatusDto } from './update-order-status.dto';
+import { PaymentMethod } from './enums/payment-method.enum';
+
+import { Order } from './schemas/order.schema';
+import { randomUUID } from 'node:crypto';
+
+//Điều chỉnh đường dẫn import theo schema thực tế
+import { Cart } from '../carts/schemas/cart.schema'
+import { Address } from '../addresses/schemas/address.schema'
 import { Product } from '../products/schemas/product.schema';
-import { Cart } from '../cart/schemas/cart.schema';
-import { CreateOrderDTO } from './dto/create-order.dto';
+import { VouchersService } from '../vouchers/vouchers.service';
+import { Payment, PaymentStatus } from '../payments/schemas/payment.schema';
+import { randomBytes } from 'node:crypto';
+
+import { subject } from '@casl/ability';
+
+import { AbilityFactory } from '../auth/authorization/ability/ability.factory';
+import { Action } from '../auth/authorization/enums/action.enum';
+import { Subject } from '../auth/authorization/enums/subject.enum';
+
+import type { AuthenticatedUser } from '../auth/guards/jwt-auth.guard';
 
 @Injectable()
 export class OrdersService {
-  constructor(
-    @InjectModel(Order.name)
-    private readonly orderModel: Model<Order>,
+    constructor(
+        @InjectModel(Order.name)
+        private readonly orderModel: Model<Order>,
 
-    @InjectModel(Product.name)
-    private readonly productModel: Model<Product>,
+        @InjectModel(Cart.name)
+        private readonly cartModel: Model<Cart>,
 
-    @InjectModel(Cart.name)
-    private readonly cartModel: Model<Cart>,
-  ) {}
+        @InjectModel(Address.name)
+        private readonly addressModel: Model<Address>,
 
-  // Tạo mã đơn hàng duy nhất: ví dụ TS-M3K4J8-1234
-  private generateOrderCode(): string {
-    const timestamp = Date.now().toString(36).toUpperCase();
-    const random = Math.floor(1000 + Math.random() * 9000);
-    return `TS-${timestamp}-${random}`;
-  }
+        @InjectModel(Product.name)
+        private readonly productModel: Model<Product>,
 
-  // 1. Tạo đơn hàng mới
-  async createOrder(userId: string, dto: CreateOrderDTO) {
-    if (!isValidObjectId(userId)) {
-      throw new BadRequestException('User ID không hợp lệ');
-    }
+        @InjectConnection()
+        private readonly connection: Connection,
 
-    // 1.1 Xác định danh sách sản phẩm cần đặt hàng
-    let orderItemsData: Array<{
-      productId: string;
-      sku: string;
-      quantity: number;
-    }> = [];
+        private readonly vouchersService: VouchersService,
 
-    const orderedSkus: string[] = [];
+        @InjectModel(Payment.name)
+        private readonly paymentModel: Model<Payment>,
 
-    if (dto.items && dto.items.length > 0) {
-      // Mua trực tiếp
-      orderItemsData = dto.items;
-      orderItemsData.forEach((i) => orderedSkus.push(i.sku));
-    } else {
-      // Mua từ giỏ hàng của user
-      const cart = await this.cartModel
-        .findOne({ userId: new Types.ObjectId(userId) })
-        .exec();
+        private readonly abilityFactory: AbilityFactory,
+    ){}
 
-      if (!cart || cart.items.length === 0) {
-        throw new BadRequestException('Giỏ hàng của bạn đang trống');
-      }
+    async prepareOrder(
+        userId : string,
+        dto: CreateOrderDto,
+        session ?: ClientSession,
+    ){
+        //hỗ trợ COD và VNPAY
+        if (
+            dto.paymentMethod !== PaymentMethod.COD &&
+            dto.paymentMethod !== PaymentMethod.VNPAY
+        ){
+            throw new BadRequestException(
+                'Phương thức thanh toán không được hỗ trợ',
+            );
+        }
 
-      const candidateItems =
-        dto.selectedSkus && dto.selectedSkus.length > 0
-          ? cart.items.filter((item) => dto.selectedSkus!.includes(item.sku))
-          : cart.items;
+        const userObjectId = new Types.ObjectId(userId)
+        
+        //Kiểm tra địa chỉ thuộc Customer
+        const address = await this.addressModel.findOne({
+            _id: new Types.ObjectId(dto.addressId),
+            userId: userObjectId,
+        }).session(session ?? null).lean();
 
-      if (candidateItems.length === 0) {
-        throw new BadRequestException('Chưa chọn sản phẩm nào để đặt hàng');
-      }
+        if (!address){
+            throw new NotFoundException(
+                'Không tìm thấy dịa chỉ giao hàng',
+            );
+        }
 
-      orderItemsData = candidateItems.map((item) => ({
-        productId: String(item.productId),
-        sku: item.sku,
-        quantity: item.quantity,
-      }));
+        //Lấy giỏ hàng 
+        const cart = await this.cartModel.findOne({
+            userId : userObjectId,
+        }).session(session ?? null).lean();
 
-      orderItemsData.forEach((i) => orderedSkus.push(i.sku));
-    }
+        if (!cart || !cart.items?.length){
+            throw new BadRequestException(
+                'Giỏ hàng đang trống',
+            );
+        }
 
-    // 1.2 Kiểm tra tồn kho và lấy thông tin chi tiết từng sản phẩm
-    const processedItems: OrderItem[] = [];
-    let subtotal = 0;
+        //Lấy thông tin Product hiện tại
+        const productIds = [
+            ...new Set(
+                cart.items.map((item) =>
+                    String(item.productId),
+                ),
+            ),
+        ];
 
-    for (const itemReq of orderItemsData) {
-      if (!isValidObjectId(itemReq.productId)) {
-        throw new BadRequestException(`ID sản phẩm ${itemReq.productId} không hợp lệ`);
-      }
+        const products = await this.productModel.find ({
+            _id: {
+                $in: productIds.map(
+                    (id) => new Types.ObjectId(id),
+                ),
+            },
+        }).session(session ?? null).lean();
 
-      const product = await this.productModel.findById(itemReq.productId).exec();
-      if (!product || !product.isActive) {
-        throw new BadRequestException(
-          `Sản phẩm "${product?.name || itemReq.productId}" hiện không khả dụng`,
+        const productMap = new Map(
+            products.map((product) => [
+                String(product._id),
+                product,
+            ]),
         );
-      }
 
-      const variant = product.variants?.find((v) => v.sku === itemReq.sku);
-      if (!variant) {
-        throw new BadRequestException(`Mã SKU ${itemReq.sku} không tồn tại`);
-      }
+        //Kiểm tra variant và chuẩn bị snapshot
+        const OrderItems: Array<{
+            productId: Types.ObjectId;
+            variantId: Types.ObjectId;
+            productName:string;
+            variantName: string;
+            sku: string;
+            unitPrice: number;
+            quantity: number;
+            subtotal:number;
+        }> = []
 
-      if (variant.stock > 0 && variant.stock < itemReq.quantity) {
-        throw new BadRequestException(
-          `Sản phẩm "${product.name}" (${variant.storage || ''} ${variant.color || ''}) chỉ còn ${variant.stock} chiếc trong kho`,
+        const requestedQty = new Map<string, number>();
+
+        for (const item of cart.items){
+            const product = productMap.get(
+                String(item.productId),
+            );
+
+            if (!product){
+                throw new BadRequestException(
+                    'Có sản phẩm trong giỏ không còn tồn tại',
+                );
+            }
+
+            if (!product.isActive){
+                throw new BadRequestException(
+                    `${product.name} hiện đang ngừng kinh doanh`
+                );
+            }
+
+            const variant = product.variants.find(
+                (v) => String(v._id) === String(item.variantId)
+            )
+
+            if(!variant){
+                throw new BadRequestException(
+                    `Phiên bản của ${product.name} không tồn tại`
+                )
+            }
+
+            if (!variant || !variant._id) {
+                throw new BadRequestException(
+                    'Phiên bản sản phẩm không hợp lệ',
+                );
+            }
+
+            const quantity = item.quantity;
+            const unitPrice = variant.price;
+
+            if (
+                !Number.isSafeInteger(quantity) ||
+                quantity <= 0
+            ){
+                throw new BadRequestException(
+                    'Số lượng sản phẩm không hợp lệ'
+                );
+            }
+
+            if (
+                !Number.isSafeInteger(unitPrice) ||
+                unitPrice < 0
+            ) {
+                throw new BadRequestException(
+                    'Giá sản phẩm không hợp lệ'
+                );
+            }
+
+            const key = `${String(product._id)}:${String(variant._id)}`;
+
+            const totalRequested = (requestedQty.get(key) ?? 0 ) + quantity;
+
+            if (variant.stock < totalRequested){
+                throw new BadRequestException(
+                    `${product.name} không đủ tồn kho.`
+                );
+            }
+
+            requestedQty.set(key, totalRequested);
+
+            const itemSubtotal= unitPrice * quantity;
+
+            if (!Number.isSafeInteger(itemSubtotal)){
+                throw new BadRequestException(
+                    'Tổng tiền sản phẩm không hợp lệ'
+                );
+            }
+
+            OrderItems.push({
+                productId: product._id ,
+                variantId : variant._id,
+                productName: product.name,
+                variantName:
+                    `${variant.color} - ${variant.storage}`,
+                sku : variant.sku,
+                unitPrice,
+                quantity, 
+                subtotal: itemSubtotal
+            });
+        }
+
+        //tính tổng tiền bằng dữ liệu backend
+        const subtotal = OrderItems.reduce(
+            (sum, item) => sum + item.subtotal,
+            0,
+        )
+
+        if (!Number.isSafeInteger(subtotal)){
+            throw new BadRequestException(
+                'Tổng tiền đơn hàng không hợp lệ'
+            );
+        }
+
+        //Voucher sẽ được tích hợp sau
+        const discountAmount = 0
+        const totalAmount = subtotal - discountAmount;
+
+        //Snapshot địa chỉ
+        const shippingAddress = {
+            hoTenNguoiNhan : address.receiverName,
+            soDienThoai: address.phone,
+            tinhThanh: address.province,
+            quanHuyen: address.district,
+            phuongXa: address.ward,
+            diaChiChiTiet: address.address,
+        }
+
+        //trả dữ liệu chuẩn bị checkout
+        return {
+            userId: userObjectId,
+            items: OrderItems,
+            shippingAddress,
+            subtotal,
+            discountAmount,
+            totalAmount,
+            paymentMethod:dto.paymentMethod,
+            note: dto.note ?? ''
+        }
+    }
+
+    async createOrder(
+        userId : string,
+        dto : CreateOrderDto,
+    ){
+        if (!Types.ObjectId.isValid(userId)){
+            throw new BadRequestException(
+                'userId không hợp lệ'
+            );
+        }
+
+        const userObjectId = new Types.ObjectId(userId);
+
+        return this.connection.transaction(async(session)=>{
+            //Chuẩn bị order trong transaction
+            const prepared = await this.prepareOrder(
+                userId,
+                dto,
+                session
+            );
+
+            //gộp số lượng variant trùng 
+            const quantities = new Map<
+                string,
+                {
+                    productId:Types.ObjectId;
+                    variantId:Types.ObjectId;
+                    quantity:number;
+                }
+            >();
+
+            for (const item of prepared.items){
+                const key = `${item.productId}:${item.variantId}`
+
+                const existing = quantities.get(key);
+
+                if(existing){
+                    existing.quantity += item.quantity;
+                }else{
+                    quantities.set(key, {
+                        productId: item.productId,
+                        variantId: item.variantId,
+                        quantity: item.quantity
+                    });
+                }
+            }
+
+            //trừ tồn kho nguyên tử
+            for (const item of quantities.values()){
+                const result = await this.productModel.updateOne(
+                    {
+                        _id: item.productId,
+                        isActive: true,
+                        variants:{
+                            $elemMatch:{
+                                _id: item.variantId,
+                                stock: {$gte: item.quantity}
+                            },
+                        },
+                    },
+                    {
+                        $inc: {
+                            'variants.$.stock': - item.quantity,
+                        },
+                    },
+                    {session},
+                );
+
+                if (result.modifiedCount !== 1){
+                    throw new BadRequestException(
+                        'Sản phẩm không đủ hoặc đã ngừng bán'
+                    );
+                }
+            }
+
+
+            let voucherId: Types.ObjectId | null = null;
+            let voucherCode: string | null = null;
+
+            let discountAmount = 0;
+
+            // Customer có gửi mã Voucher hay không?
+            if (dto.voucherCode) {
+                const voucherResult =
+                    await this.vouchersService.reserveVoucherForOrder(
+                        userObjectId,
+                        dto.voucherCode,
+                        prepared.subtotal,
+                        session,
+                    );
+
+                voucherId = voucherResult.voucherId;
+                voucherCode = voucherResult.voucherCode;
+                discountAmount = voucherResult.discountAmount;
+            }
+
+            // Backend tự tính số tiền cuối cùng
+            const totalAmount =
+            prepared.subtotal - discountAmount;
+
+            if (
+                !Number.isSafeInteger(totalAmount) ||
+                totalAmount < 0
+                ) {
+                throw new BadRequestException(
+                    'Tổng tiền đơn hàng không hợp lệ',
+                );
+            }
+
+            //Tạo mã đơn hàng
+            const orderCode = `DH-${randomUUID()}`
+
+            //Tạo order
+            const [order] = await this.orderModel.create(
+                [
+                    {
+                        orderCode,
+                        userId: userObjectId,
+
+                        items: prepared.items,
+                        shippingAddress: prepared.shippingAddress,
+
+                        voucherId,
+                        voucherCode,
+
+                        subtotal: prepared.subtotal,
+                        discountAmount,
+                        totalAmount,
+
+                        paymentMethod: prepared.paymentMethod,
+                        paymentStatus: 'pending',
+                        orderStatus: 'cho_xac_nhan',
+
+                        note: prepared.note, 
+                    },
+                ],
+                {session},
+            );
+
+            //Tạo VoucherUsage
+            if (voucherId) {
+                await this.vouchersService.createVoucherUsage(
+                    voucherId,
+                    userObjectId,
+                    order._id,
+                    discountAmount,
+                    session,
+                );
+            }
+
+            // 2. Tạo Payment pending nếu chọn VNPay
+            if (dto.paymentMethod === PaymentMethod.VNPAY) {
+                if (
+                    !Number.isSafeInteger(totalAmount) ||
+                    totalAmount <= 0
+                ) {
+                    throw new BadRequestException(
+                        'Số tiền thanh toán VNPay phải lớn hơn 0',
+                    );
+                }
+
+                const transactionCode = randomBytes(16)
+                    .toString('hex');
+
+                await this.paymentModel.create(
+                    [
+                        {
+                            orderId: order._id,
+                            userId: userObjectId,
+                            provider: 'vnpay',
+                            transactionCode,
+                            amount: totalAmount,
+                            currency: 'VND',
+                            status: PaymentStatus.PENDING,
+                        },
+                    ],
+                    { session },
+                );
+            }
+
+            //làm rỗng giỏ hàng
+            const cartResult = await this.cartModel.updateOne(
+                {
+                    userId: userObjectId,
+                    'items.0' : { $exists:true},
+                },
+                {
+                    $set:{ items: []},
+                },
+                {session},
+            );
+
+            if (cartResult.modifiedCount !== 1){
+                throw new BadRequestException(
+                    'Giỏ hàng đã thay đổi vui lòng thử lại'
+                );
+            }
+
+            return order;
+        });
+    }
+
+    async getMyOrders(userId:string){
+        //Kiểm tra định dạng Id
+        if (!Types.ObjectId.isValid(userId)){
+            throw new BadRequestException (
+                'User Id không hợp lệ'
+            );
+        }
+
+        //Tìm các Order thuộc user đăng nhập
+        return this.orderModel.find({
+            userId: new Types.ObjectId(userId),
+        })
+        .sort({createdAt:-1})
+        .lean()
+        .exec();
+        }
+
+    async getOrderDetail(user: AuthenticatedUser, orderId: string) {
+        const userId = user.id
+        // 1. Kiểm tra định dạng ObjectId
+        if (
+            !Types.ObjectId.isValid(userId) ||
+            !Types.ObjectId.isValid(orderId)
+        ) {
+            throw new BadRequestException(
+                'User ID hoặc Order ID không hợp lệ',
+            );
+        }
+
+        // 2. Chỉ tìm Order thuộc Customer đang đăng nhập
+        const order = await this.orderModel
+            .findOne({
+                _id: new Types.ObjectId(orderId),
+                userId: new Types.ObjectId(userId),
+            })
+            .lean()
+            .exec();
+
+        // 3. Không tìm thấy hoặc không thuộc Customer
+        if (!order) {
+            throw new NotFoundException(
+                'Không tìm thấy đơn hàng',
+            );
+        }
+
+
+        const ability = this.abilityFactory.createForUser(user);
+
+        const orderSubject = subject(Subject.Order, {
+            userId: String(order.userId),
+        });
+
+        if (!ability.can(Action.Read, orderSubject)) {
+            throw new ForbiddenException(
+                'Bạn không có quyền xem đơn hàng này',
+            );
+        }
+
+        // 4. Trả chi tiết Order
+        return order;
+    }
+
+
+
+    async cancelOrder(user: AuthenticatedUser, orderId: string) {
+        const userId = user.id
+        // 1. Kiểm tra ObjectId
+        if (
+            !Types.ObjectId.isValid(userId) ||
+            !Types.ObjectId.isValid(orderId)
+        ) {
+            throw new BadRequestException(
+                'User ID hoặc Order ID không hợp lệ',
+            );
+        }
+
+        const userObjectId = new Types.ObjectId(userId);
+        const orderObjectId = new Types.ObjectId(orderId);
+
+        // 2. Bắt đầu MongoDB Transaction
+        return this.connection.transaction(async (session) => {
+
+        // 3. Tìm Order thuộc Customer hiện tại
+        const order = await this.orderModel.findOne({
+                _id: orderObjectId,
+                userId: userObjectId,
+            }).session(session);
+
+        if (!order) {
+            throw new NotFoundException(
+                'Không tìm thấy đơn hàng',
+            );
+        }
+
+
+        const ability = this.abilityFactory.createForUser(user);
+
+        const orderSubject = subject(Subject.Order, {
+            userId: String(order.userId),
+        });
+
+        if (!ability.can(Action.Cancel, orderSubject)) {
+            throw new ForbiddenException(
+                'Bạn không có quyền hủy đơn hàng này',
+            );
+        }
+
+
+        // 4. Kiểm tra điều kiện được phép hủy
+        if (
+            order.orderStatus !== 'cho_xac_nhan' ||
+            order.paymentMethod !== 'cod' ||
+            order.paymentStatus !== 'pending'
+        ) {
+            throw new ConflictException(
+                'Đơn hàng không đủ điều kiện hủy',
+            );
+        }
+
+        // 5. Đổi trạng thái với điều kiện nguyên tử
+        const statusResult = await this.orderModel.updateOne(
+            {
+                _id: orderObjectId,
+                userId: userObjectId,
+                orderStatus: 'cho_xac_nhan',
+                paymentMethod: 'cod',
+                paymentStatus: 'pending',
+            },
+            {
+                $set: {
+                    orderStatus: 'da_huy',
+                },
+            },
+            { session },
         );
-      }
 
-      const itemTotal = variant.price * itemReq.quantity;
-      subtotal += itemTotal;
+        if (statusResult.modifiedCount !== 1) {
+            throw new ConflictException(
+                'Trạng thái đơn hàng đã thay đổi',
+            );
+        }
 
-      const img =
-        variant.images?.[0] || product.images?.[0] || '';
+        await this.restoreOrderStock(order, session);
 
-      processedItems.push({
-        productId: new Types.ObjectId(itemReq.productId),
-        sku: variant.sku,
-        name: product.name,
-        slug: product.slug,
-        color: variant.color || '',
-        storage: variant.storage || '',
-        image: img,
-        price: variant.price,
-        quantity: itemReq.quantity,
-      });
+        // 8. Hoàn lượt Voucher nếu Order có sử dụng
+        if (order.voucherId) {
+            await this.vouchersService.reverseVoucherUsage(
+                order._id,
+                userObjectId,
+                new Types.ObjectId(String(order.voucherId)),
+                session,
+            );
+        }
+
+        // 9. Trả Order sau khi cập nhật
+        const cancelledOrder = await this.orderModel
+            .findById(orderObjectId)
+            .session(session)
+            .lean()
+            .exec();
+
+        return {
+                message: 'Hủy đơn hàng thành công',
+                order: cancelledOrder,
+            };
+        });
     }
 
-    // 1.3 Tính toán tổng thanh toán
-    const discountAmount = Math.max(0, dto.discountAmount || 0);
-    const shippingFee = 0; // Miễn phí vận chuyển
-    const totalAmount = Math.max(0, subtotal - discountAmount + shippingFee);
+    async updateOrderStatus(
+        orderId: string,
+        dto: UpdateOrderStatusDto,
+    ) {
+        // 1. Kiểm tra ObjectId
+        if (!Types.ObjectId.isValid(orderId)) {
+            throw new BadRequestException(
+                'Order ID không hợp lệ',
+            );
+        }
 
-    const orderCode = this.generateOrderCode();
+        const orderObjectId = new Types.ObjectId(orderId);
 
-    // 1.4 Trừ số lượng tồn kho của các biến thể đã đặt (nếu có tồn kho)
-    for (const item of processedItems) {
-      await this.productModel
-        .updateOne(
-          {
-            _id: item.productId,
-            'variants.sku': item.sku,
-            'variants.stock': { $gt: 0 },
-          },
-          {
-            $inc: { 'variants.$.stock': -item.quantity },
-          },
-        )
-        .exec();
+        // 2. Quy định trạng thái đứng trước
+        const previousStatus: Record<string, string> = {
+            da_xac_nhan: 'cho_xac_nhan',
+            dang_giao: 'da_xac_nhan',
+            da_giao: 'dang_giao',
+        };
+
+        const expectedStatus = previousStatus[dto.status];
+
+        if (!expectedStatus) {
+            throw new BadRequestException(
+                'Trạng thái yêu cầu không hợp lệ',
+            );
+        }
+
+        // 3. Cập nhật có điều kiện, nguyên tử
+        const updatedOrder = await this.orderModel
+            .findOneAndUpdate(
+            {
+                _id: orderObjectId,
+                orderStatus: expectedStatus,
+                $or: [
+                    {
+                        paymentMethod: 'cod',
+                        paymentStatus: 'pending',
+                    },
+                    {
+                        paymentMethod: 'vnpay',
+                        paymentStatus: 'paid',
+                    },
+                ],
+            },
+            {
+                $set: {
+                    orderStatus: dto.status,
+                },
+            },
+            {
+                returnDocument: 'after',
+                runValidators: true,
+            },
+            )
+            .lean()
+            .exec();
+
+        if (updatedOrder) {
+            return {
+                message: 'Cập nhật trạng thái đơn hàng thành công',
+                order: updatedOrder,
+            };
+        }
+
+        // 4. Phân biệt Order không tồn tại
+        // và Order không đủ điều kiện chuyển trạng thái
+        const exists = await this.orderModel.exists({
+            _id: orderObjectId,
+        });
+
+        if (!exists) {
+            throw new NotFoundException(
+                'Không tìm thấy đơn hàng',
+            );
+        }
+
+        throw new ConflictException(
+            'Không thể chuyển trạng thái đơn hàng',
+        );
     }
 
-    // 1.5 Xóa các sản phẩm đã đặt khỏi giỏ hàng của user
-    await this.cartModel
-      .updateOne(
-        { userId: new Types.ObjectId(userId) },
-        {
-          $pull: {
-            items: { sku: { $in: orderedSkus } },
-          },
-        },
-      )
-      .exec();
-
-    // 1.6 Lưu đơn hàng vào MongoDB
-    const order = await this.orderModel.create({
-      orderCode,
-      userId: new Types.ObjectId(userId),
-      customerInfo: dto.customerInfo,
-      items: processedItems,
-      subtotal,
-      discountAmount,
-      shippingFee,
-      totalAmount,
-      paymentMethod: dto.paymentMethod || PaymentMethod.COD,
-      paymentStatus: PaymentStatus.PENDING,
-      orderStatus: OrderStatus.PENDING,
-      merchantInfo: dto.merchantInfo || {},
-    });
-
-    return {
-      message: 'Đặt hàng thành công!',
-      order,
-    };
-  }
-
-  // 2. Lấy danh sách đơn hàng của người dùng hiện tại
-  async getUserOrders(userId: string, page = 1, limit = 10) {
-    if (!isValidObjectId(userId)) {
-      throw new BadRequestException('User ID không hợp lệ');
+    async getAllOrders() {
+        return this.orderModel
+            .find()
+            .sort({ createdAt: -1 })
+            .limit(50)
+            .lean()
+            .exec();
     }
 
-    const skip = (page - 1) * limit;
 
-    const [orders, total] = await Promise.all([
-      this.orderModel
-        .find({ userId: new Types.ObjectId(userId) })
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .exec(),
-      this.orderModel.countDocuments({ userId: new Types.ObjectId(userId) }),
-    ]);
+    async getManagedOrderDetail(orderId: string) {
+        if (!Types.ObjectId.isValid(orderId)) {
+            throw new BadRequestException(
+            'Order ID không hợp lệ',
+            );
+        }
 
-    return {
-      data: orders,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
-  }
+        const order = await this.orderModel
+            .findById(orderId)
+            .lean()
+            .exec();
 
-  // 3. Lấy chi tiết đơn hàng
-  async getOrderDetail(userId: string, userRole: string, idOrCode: string) {
-    let order: OrderDocument | null = null;
+        if (!order) {
+            throw new NotFoundException(
+            'Không tìm thấy đơn hàng',
+            );
+        }
 
-    if (isValidObjectId(idOrCode)) {
-      order = await this.orderModel.findById(idOrCode).exec();
+        return order;
     }
 
-    if (!order) {
-      order = await this.orderModel.findOne({ orderCode: idOrCode }).exec();
+    private async restoreOrderStock(
+        order: Order,
+        session: ClientSession,
+    ): Promise<void> {
+        // Gộp số lượng nếu có Variant trùng nhau
+        const quantities = new Map<
+            string,
+            {
+            productId: Types.ObjectId;
+            variantId: Types.ObjectId;
+            quantity: number;
+            }
+        >();
+
+        for (const item of order.items) {
+            const key = `${item.productId}:${item.variantId}`;
+            const existing = quantities.get(key);
+
+            if (existing) {
+            existing.quantity += item.quantity;
+            } else {
+            quantities.set(key, {
+                productId: item.productId,
+                variantId: item.variantId,
+                quantity: item.quantity,
+            });
+            }
+        }
+
+        // Hoàn stock bằng phép cập nhật nguyên tử
+        for (const item of quantities.values()) {
+            const result = await this.productModel.updateOne(
+            {
+                _id: item.productId,
+                'variants._id': item.variantId,
+            },
+            {
+                $inc: {
+                'variants.$.stock': item.quantity,
+                },
+            },
+            { session },
+            );
+
+            if (result.modifiedCount !== 1) {
+            throw new ConflictException(
+                'Không thể hoàn tồn kho sản phẩm',
+            );
+            }
+        }
     }
 
-    if (!order) {
-      throw new NotFoundException('Không tìm thấy thông tin đơn hàng');
+
+    async releaseFailedVnpayOrder(
+        orderId: Types.ObjectId,
+        userId: Types.ObjectId,
+        session: ClientSession,
+    ): Promise<void> {
+        // 1. Tìm đơn VNPay đang chờ xác nhận
+        const order = await this.orderModel.findOne({
+            _id: orderId,
+            userId,
+            paymentMethod: 'vnpay',
+            paymentStatus: 'pending',
+            orderStatus: 'cho_xac_nhan',
+        }).session(session);
+
+        if (!order) {
+            throw new ConflictException(
+            'Order không đủ điều kiện hoàn tài nguyên',
+            );
+        }
+
+        // 2. Đổi trạng thái có điều kiện
+        const result = await this.orderModel.updateOne(
+            {
+            _id: orderId,
+            userId,
+            paymentMethod: 'vnpay',
+            paymentStatus: 'pending',
+            orderStatus: 'cho_xac_nhan',
+            },
+            {
+            $set: {
+                paymentStatus: 'failed',
+                orderStatus: 'da_huy',
+            },
+            },
+            { session },
+        );
+
+        if (result.modifiedCount !== 1) {
+            throw new ConflictException(
+            'Order đã được xử lý bởi request khác',
+            );
+        }
+
+        // 3. Hoàn tồn kho
+        await this.restoreOrderStock(order, session);
+
+        // 4. Hoàn lượt Voucher nếu Order có sử dụng
+        if (order.voucherId) {
+            await this.vouchersService.reverseVoucherUsage(
+            order._id,
+            userId,
+            new Types.ObjectId(String(order.voucherId)),
+            session,
+            );
+        }
     }
 
-    // Kiểm tra quyền: chỉ người đặt hoặc admin mới được xem
-    if (String(order.userId) !== userId && userRole !== 'admin') {
-      throw new ForbiddenException('Bạn không có quyền xem đơn hàng này');
-    }
 
-    return order;
-  }
-
-  // 4. Hủy đơn hàng (khi đơn đang ở trạng thái pending)
-  async cancelOrder(userId: string, idOrCode: string) {
-    const order = await this.getOrderDetail(userId, 'customer', idOrCode);
-
-    if (order.orderStatus !== OrderStatus.PENDING) {
-      throw new BadRequestException(
-        `Không thể hủy đơn hàng đang ở trạng thái "${order.orderStatus}"`,
-      );
-    }
-
-    // Hoàn trả lại số lượng tồn kho
-    for (const item of order.items) {
-      await this.productModel
-        .updateOne(
-          {
-            _id: item.productId,
-            'variants.sku': item.sku,
-          },
-          {
-            $inc: { 'variants.$.stock': item.quantity },
-          },
-        )
-        .exec();
-    }
-
-    order.orderStatus = OrderStatus.CANCELLED;
-    await order.save();
-
-    return {
-      message: 'Hủy đơn hàng thành công',
-      order,
-    };
-  }
-
-  // 5. Admin: Lấy danh sách tất cả đơn hàng kèm bộ lọc và tìm kiếm
-  async getAllOrdersAdmin(
-    userRole: string,
-    page = 1,
-    limit = 10,
-    status?: string,
-    search?: string,
-  ) {
-    if (userRole !== 'admin') {
-      throw new ForbiddenException('Chỉ quản trị viên mới có quyền truy cập');
-    }
-
-    const filter: Record<string, unknown> = {};
-
-    if (status && Object.values(OrderStatus).includes(status as OrderStatus)) {
-      filter.orderStatus = status;
-    }
-
-    if (search && search.trim()) {
-      const searchRegex = new RegExp(search.trim(), 'i');
-      filter.$or = [
-        { orderCode: searchRegex },
-        { 'customerInfo.fullName': searchRegex },
-        { 'customerInfo.phone': searchRegex },
-        { 'customerInfo.email': searchRegex },
-      ];
-    }
-
-    const skip = (page - 1) * limit;
-
-    const [orders, total] = await Promise.all([
-      this.orderModel
-        .find(filter)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .exec(),
-      this.orderModel.countDocuments(filter),
-    ]);
-
-    return {
-      data: orders,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
-  }
-
-  // 6. Admin: Cập nhật trạng thái đơn hàng
-  async updateOrderStatusAdmin(
-    userRole: string,
-    idOrCode: string,
-    newStatus: OrderStatus,
-  ) {
-    if (userRole !== 'admin') {
-      throw new ForbiddenException('Chỉ quản trị viên mới có quyền cập nhật');
-    }
-
-    if (!Object.values(OrderStatus).includes(newStatus)) {
-      throw new BadRequestException(`Trạng thái "${newStatus}" không hợp lệ`);
-    }
-
-    const order = await this.getOrderDetail('admin', userRole, idOrCode);
-
-    // Nếu chuyển sang hủy đơn và trước đó chưa hủy -> hoàn trả kho
-    if (newStatus === OrderStatus.CANCELLED && order.orderStatus !== OrderStatus.CANCELLED) {
-      for (const item of order.items) {
-        await this.productModel
-          .updateOne(
-            { _id: item.productId, 'variants.sku': item.sku },
-            { $inc: { 'variants.$.stock': item.quantity } },
-          )
-          .exec();
-      }
-    }
-
-    order.orderStatus = newStatus;
-    await order.save();
-
-    return {
-      message: `Đã cập nhật trạng thái đơn hàng thành "${newStatus}"`,
-      order,
-    };
-  }
-
-  // 7. Admin: Cập nhật trạng thái thanh toán
-  async updatePaymentStatusAdmin(
-    userRole: string,
-    idOrCode: string,
-    paymentStatus: PaymentStatus,
-  ) {
-    if (userRole !== 'admin') {
-      throw new ForbiddenException('Chỉ quản trị viên mới có quyền cập nhật');
-    }
-
-    if (!Object.values(PaymentStatus).includes(paymentStatus)) {
-      throw new BadRequestException(`Trạng thái thanh toán "${paymentStatus}" không hợp lệ`);
-    }
-
-    const order = await this.getOrderDetail('admin', userRole, idOrCode);
-    order.paymentStatus = paymentStatus;
-    await order.save();
-
-    return {
-      message: `Đã cập nhật trạng thái thanh toán thành "${paymentStatus}"`,
-      order,
-    };
-  }
 }

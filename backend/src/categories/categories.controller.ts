@@ -4,6 +4,14 @@ import { CategoriesService } from './categories.service';
 import { CreateCategoryDTO } from './create-category.dto';
 
 import { UpdateCategoryDTO } from './update-category.dto';
+import { UseGuards } from '@nestjs/common';
+
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PoliciesGuard } from '../auth/authorization/policies/guards/policies.guard';
+import { CheckPolicies } from '../auth/authorization/policies/decorators/check-policies.decorator';
+
+import { Action } from '../auth/authorization/enums/action.enum';
+import { Subject } from '../auth/authorization/enums/subject.enum';
 
 @Controller('categories')
 export class CategoriesController {
@@ -13,6 +21,11 @@ export class CategoriesController {
 
     //Tạo Danh mục mới (admin)
     @Post()
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Create,
+        subject: Subject.Category,
+    })
     create(@Body() createCategoryDTO:CreateCategoryDTO){
         return this.categoriesService.create(
             createCategoryDTO,
@@ -33,6 +46,11 @@ export class CategoriesController {
 
     //Sửa danh mục theo id (admin)
     @Patch(':id')
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Update,
+        subject: Subject.Category,
+    })
     update(
         @Param('id') id:string,
         @Body() updateCategoryDTO:UpdateCategoryDTO,
@@ -45,6 +63,11 @@ export class CategoriesController {
 
     //Xóa danh mục theo id(admin)
     @Delete(':id')
+    @UseGuards(JwtAuthGuard, PoliciesGuard)
+    @CheckPolicies({
+        action: Action.Delete,
+        subject: Subject.Category,
+    })
     remove(@Param('id') id:string){
         return this.categoriesService.remove(id);
     }

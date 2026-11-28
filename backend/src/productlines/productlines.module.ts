@@ -7,9 +7,11 @@ import { ProductLineSchema, ProductLine } from './schemas/productline.schema';
 import { Brand,BrandSchema } from '../brands/schemas/brand.schema';
 import { Category, CategorySchema } from '../categories/schemas/category.schema';
 import { Product, ProductSchema } from '../products/schemas/product.schema';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports:[
+    AuthModule,
     MongooseModule.forFeature([
       {
         name:ProductLine.name,

@@ -9,10 +9,13 @@ import { CategoriesModule } from './categories/categories.module';
 import { BrandsModule } from './brands/brands.module';
 import { ProductlinesModule } from './productlines/productlines.module';
 import { AuthModule } from './auth/auth.module';
-import { CartModule } from './cart/cart.module';
+import { CartsModule } from './carts/carts.module';
 import { AddressesModule } from './addresses/addresses.module';
 import { UsersModule } from './users/users.module';
 import { OrdersModule } from './orders/orders.module';
+import { ReviewsModule } from './reviews/reviews.module';
+import { VouchersModule } from './vouchers/vouchers.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -26,32 +29,25 @@ import { OrdersModule } from './orders/orders.module';
       useFactory: (ConfigService: ConfigService) => ({
         uri: ConfigService.getOrThrow<string>('MONGODB_URI'),
         dbName: ConfigService.getOrThrow<string>('MONGODB_DATABASE'),
-        autoIndex:true,
+        autoIndex: true,
       }),
     }),
 
     ProductsModule,
-
     CategoriesModule,
-
     BrandsModule,
-
     ProductlinesModule,
-
     AuthModule,
-
-    CartModule,
-
+    CartsModule,
     AddressesModule,
-
     UsersModule,
-
     OrdersModule,
+    ReviewsModule,
+    VouchersModule,
+    PaymentsModule,
   ],
 
   controllers: [AppController],
   providers: [AppService],
-
 })
-
-export class AppModule { }
+export class AppModule {}

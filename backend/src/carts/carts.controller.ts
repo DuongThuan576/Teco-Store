@@ -11,28 +11,21 @@ import {
     Delete,
 } from '@nestjs/common';
 
-import type { Request } from 'express';
-
 import { CartsService } from './carts.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AddCartItemDTO } from './add-cart-item.dto';
 import { UpdateCartItemDTO } from './update-cart-item.dto';
 
-type AuthenticatedRequest = Request & {
-  user?: {
-    id: string;
-    role: string;
-  };
-};
+import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 
-@Controller('carts')
+@Controller(['carts', 'cart'])
 export class CartsController {
   constructor(
     private readonly cartsService: CartsService,
   ) {}
 
-  //Lấy giỏ hàng của người dùng
-  @Get('me')
+  // Lấy giỏ hàng của người dùng (hỗ trợ /api/carts/me, /api/cart, /api/cart/items)
+  @Get(['me', '', 'items'])
   @UseGuards(JwtAuthGuard)
   getMyCart(@Req() req: AuthenticatedRequest) {
     const userId = req.user?.id;
@@ -43,86 +36,85 @@ export class CartsController {
       );
     }
 
-    return this.cartsService.getMyCart(userId);
+    return this.cartsService.getMyCart(req.user!);
   }
 
-    //Thêm items vào giỏ hàng
-    @Post('items')
-    @UseGuards(JwtAuthGuard)
-    addItem(
-        @Req() req: AuthenticatedRequest,
-        @Body() dto: AddCartItemDTO,
-        ) {
-        const userId = req.user?.id;
+  // Thêm items vào giỏ hàng
+  @Post('items')
+  @UseGuards(JwtAuthGuard)
+  addItem(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: AddCartItemDTO,
+  ) {
+    const userId = req.user?.id;
 
-        if (!userId) {
-            throw new UnauthorizedException(
-            'Không xác định được người dùng',
-            );
-        }
-
-        return this.cartsService.addItem(userId, dto);
-    }
-    //Cập nhật item trong giỏ hàng 
-    @Patch('items/:variantId')
-    @UseGuards(JwtAuthGuard)
-    updateItem(
-        @Req() req: AuthenticatedRequest,
-        @Param('variantId') variantId: string,
-        @Body() dto: UpdateCartItemDTO,
-        ) {
-        const userId = req.user?.id;
-
-        if (!userId) {
-            throw new UnauthorizedException(
-            'Không xác định được người dùng',
-            );
-        }
-
-        return this.cartsService.updateItem(
-            userId,
-            variantId,
-            dto,
-        );
+    if (!userId) {
+      throw new UnauthorizedException(
+        'Không xác định được người dùng',
+      );
     }
 
-    //Xóa Item trong giỏ hàng
-    @Delete('items/:variantId')
-    @UseGuards(JwtAuthGuard)
-    removeItem(
-        @Req() req: AuthenticatedRequest,
-        @Param('variantId') variantId: string,
-        ) {
-        const userId = req.user?.id;
+    return this.cartsService.addItem(req.user!, dto);
+  }
 
-        if (!userId) {
-            throw new UnauthorizedException(
-            'Không xác định được người dùng',
-            );
-        }
+  // Cập nhật item trong giỏ hàng 
+  @Patch('items/:variantId')
+  @UseGuards(JwtAuthGuard)
+  updateItem(
+    @Req() req: AuthenticatedRequest,
+    @Param('variantId') variantId: string,
+    @Body() dto: UpdateCartItemDTO,
+  ) {
+    const userId = req.user?.id;
 
-        return this.cartsService.removeItem(
-            userId,
-            variantId,
-        );
+    if (!userId) {
+      throw new UnauthorizedException(
+        'Không xác định được người dùng',
+      );
     }
 
-    //Xóa tất cả item trong giỏ hàng
-    @Delete('me')
-    @UseGuards(JwtAuthGuard)
-    clearCart(
-        @Req() req: AuthenticatedRequest,
-        ) {
-        const userId = req.user?.id;
+    return this.cartsService.updateItem(
+      req.user!,
+      variantId,
+      dto,
+    );
+  }
 
-        if (!userId) {
-            throw new UnauthorizedException(
-            'Không xác định được người dùng',
-            );
-        }
+  // Xóa Item trong giỏ hàng
+  @Delete('items/:variantId')
+  @UseGuards(JwtAuthGuard)
+  removeItem(
+    @Req() req: AuthenticatedRequest,
+    @Param('variantId') variantId: string,
+  ) {
+    const userId = req.user?.id;
 
-        return this.cartsService.clearCart(userId);
+    if (!userId) {
+      throw new UnauthorizedException(
+        'Không xác định được người dùng',
+      );
     }
 
+    return this.cartsService.removeItem(
+      req.user!,
+      variantId,
+    );
+  }
 
+  // Xóa tất cả item trong giỏ hàng
+  @Delete(['me', ''])
+  @UseGuards(JwtAuthGuard)
+  clearCart(
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      throw new UnauthorizedException(
+        'Không xác định được người dùng',
+      );
+    }
+
+    return this.cartsService.clearCart(req.user!);
+  }
 }
