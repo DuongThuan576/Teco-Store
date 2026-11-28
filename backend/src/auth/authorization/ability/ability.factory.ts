@@ -76,6 +76,9 @@ export class AbilityFactory {
             _id: user.id,
             });
 
+            can(Action.Read, Subject.UserManagement);
+            can(Action.Update, Subject.UserManagement);
+
         }
 
         // EMPLOYEE
